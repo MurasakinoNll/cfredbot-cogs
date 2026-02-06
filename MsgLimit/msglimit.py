@@ -1,4 +1,4 @@
-from discord import ui
+import discord
 from redbot.core import commands, Config
 from datetime import date
 
@@ -27,86 +27,85 @@ class MsgLimit(commands.Cog):
     @commands.guild_only()
     @commands.is_owner()
     @commands.command()
-    async def msglimit(self, ctx, uid: int, limit: int):
+    async def msglimit(self, ctx, user: discord.Member, limit: int):
         """Set daily limit of text msgs"""
         if limit < 1:
-            await ctx.send("limit must be an int>1")
+            await ctx.send("limit must be an int > 1")
             return
 
         users = await self.config.guild(ctx.guild).users()
-        uuid = str(uid)
+        uuid = str(user.id)
 
         users.setdefault(uuid, {})
         users[uuid]["text"] = {"limit": limit, "count": 0, "date": str(date.today())}
 
         await self.config.guild(ctx.guild).users.set(users)
-        await ctx.send(f"text limit for `{uid} set to **`{limit}`**")
+        await ctx.send(f"text limit for `{user}` set to **`{limit}`**")
 
-        @commands.guild_only()
-        @commands.is_owner()
-        @commands.command()
-        async def medialimit(self, ctx, uid: int, limit: int):
-            """set daily limit of media msgs"""
-            if limit < 1:
-                await ctx.send("limit must be an int>1")
-                return
+    @commands.guild_only()
+    @commands.is_owner()
+    @commands.command()
+    async def medialimit(self, ctx, user: discord.Member, limit: int):
+        """set daily limit of media msgs"""
+        if limit < 1:
+            await ctx.send("limit must be an int > 1")
+            return
 
-            users = await self.config.guild(ctx.guild).users()
-            uuid = str(uid)
+        users = await self.config.guild(ctx.guild).users()
+        uuid = str(user.id)
 
-            users.setdefault(uuid, {})
-            users[uuid]["media"] = {
-                "limit": limit,
-                "count": 0,
-                "date": str(date.today()),
-            }
+        users.setdefault(uuid, {})
+        users[uuid]["media"] = {"limit": limit, "count": 0, "date": str(date.today())}
 
-            await self.config.guild(ctx.guild).users.set(users)
-            await ctx.send(f"media limit for `{uid}` set to **`{limit}`**")
+        await self.config.guild(ctx.guild).users.set(users)
+        await ctx.send(f"media limit for `{user}` set to **`{limit}`**")
 
-        @commands.guild_only()
-        @commands.is_owner()
-        @commands.command()
-        async def rmlimit(self, ctx, uid: int):
-            """remove message limits from uuid"""
-            users = await self.config.guild(ctx.guild).users()
-            uuid = str(uid)
+    @commands.guild_only()
+    @commands.is_owner()
+    @commands.command()
+    async def rmlimit(self, ctx, user: discord.Member):
+        """remove message limits from user"""
+        users = await self.config.guild(ctx.guild).users()
+        uuid = str(user.id)
 
-            if uuid not in users:
-                await ctx.send("user has no msglimit set")
-                return
+        if uuid not in users:
+            await ctx.send("user has no msglimit set")
+            return
 
-            del users[uuid]
-            await self.config.guild(ctx.guild).users.set(users)
-            await ctx.send("limit removed from user")
+        del users[uuid]
+        await self.config.guild(ctx.guild).users.set(users)
+        await ctx.send("limit removed from user")
 
-        @commands.Cog.listener()
-        async def on_msg(self, message):
-            if not message.guild or message.author.bot:
-                return
-            guild_config = self.config.guild(message.guild)
-            users = await guild_config.users
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        if not message.guild or message.author.bot:
+            return
 
-            uuid = str(message.author.id)
-            if uid not in users:
-                return
+        guild_config = self.config.guild(message.guild)
+        users = await guild_config.users()
 
-            udata = users[uuid]
-            is_media = self._is_media_msg(message)
+        uuid = str(message.author.id)
+        if uuid not in users:
+            return
 
-            key = "media" if is_media else "text"
-            if key not in udata:
-                return
+        udata = users[uuid]
+        is_media = self._is_media_msg(message)
 
-            data = udata[key]
-            self._reset_24h(data)
-            data["count"] += 1
-            if data["count"] > data["limit"]:
-                try:
-                    await message.delete()
-                except Exception:
-                    pass
-                return
-            udata[key] = data
-            users[uuid] = udata
-            await guild_config.users.set(users)
+        key = "media" if is_media else "text"
+        if key not in udata:
+            return
+
+        data = udata[key]
+        self._reset_24h(data)
+        data["count"] += 1
+
+        if data["count"] > data["limit"]:
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            return
+
+        udata[key] = data
+        users[uuid] = udata
+        await guild_config.users.set(users)
