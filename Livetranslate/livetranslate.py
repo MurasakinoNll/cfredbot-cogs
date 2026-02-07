@@ -19,8 +19,10 @@ class LiveTranslate(commands.Cog):
 
         if cid in self.enabled_channels:
             self.enabled_channels.remove(cid)
+            await ctx.send("disabled translate")
         else:
             self.enabled_channels.add(cid)
+            await ctx.send("enabled translate")
 
     def _englishy(self, text: str) -> bool:
         ascii_ratio = sum(c.isascii() for c in text) / max(len(text), 1)
@@ -67,6 +69,7 @@ class LiveTranslate(commands.Cog):
     @commands.command()
     async def settranslatekey(self, ctx, key: str):
         await self.config.api_key.set(key)
+        await ctx.send("api key set")
 
     @commands.Cog.listener()
     async def on_msg(self, message: discord.Message):
