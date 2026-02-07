@@ -20,7 +20,7 @@ class MeasureTemp(commands.Cog):
                 return
 
             out = proc.stdout.strip()
-            await ctx.send(f"C° : {out}")
+            await ctx.send(out)
 
         except Exception:
             await ctx.send("something shit itself check log")
