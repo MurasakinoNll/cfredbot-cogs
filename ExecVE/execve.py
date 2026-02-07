@@ -28,8 +28,8 @@ class ExecVE(commands.Cog):
                 return
 
             out = proc.stdout
-            MAX_LEN = 3000  # leave space for ``` code block
+            MAX_LEN = 3000
             for i in range(0, len(out), MAX_LEN):
                 await ctx.send(f"```\n{out[i : i + MAX_LEN]}\n```")
-        except Exception:
-            await ctx.send(f"somehting died: {Exception}")
+        except Exception as e:
+            await ctx.send(f"somehting died: {e}")
