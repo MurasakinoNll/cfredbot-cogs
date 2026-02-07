@@ -14,7 +14,7 @@ class LiveTranslate(commands.Cog):
         self.enabled_channels = set()
 
     @commands.command()
-    async def translate(self, ctx):
+    async def translatetext(self, ctx):
         cid = ctx.channel.id
 
         if cid in self.enabled_channels:
