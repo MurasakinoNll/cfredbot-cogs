@@ -3,7 +3,7 @@ import discord
 from redbot.core import commands, Config
 import re
 
-YANDEX_DICT_URL = "https://dictionary.yandex.net/api/v1/dicservice.json/lookup"
+GOOGLE_TRANSLATE_URL = "https://translation.googleapis.com/language/translate/v2"
 
 
 class LiveTranslate(commands.Cog):
@@ -37,31 +37,38 @@ class LiveTranslate(commands.Cog):
             return "ko-en"
         return "it-en"
 
+    GOOGLE_TRANSLATE_URL = "https://translation.googleapis.com/language/translate/v2"
+
     async def _translate(self, text: str) -> str | None:
         key = await self.config.api_key()
-        params = {
-            "key": key,
-            "lang": self._lang_check(text),
-            "text": text,
+        if not key:
+            return None
+
+        params = {"key": key}
+        payload = {
+            "q": text,
+            "target": "en",
+            "format": "text",
         }
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    YANDEX_DICT_URL, params=params, timeout=5
+                async with session.post(
+                    GOOGLE_TRANSLATE_URL,
+                    params=params,
+                    json=payload,
+                    timeout=5,
                 ) as resp:
                     if resp.status != 200:
                         return None
 
                     data = await resp.json()
-                defs = data.get("def")
-                if not defs:
-                    return None
-                trs = defs[0].get("tr")
-                if not trs:
-                    return None
 
-                return trs[0].get("text")
+            translations = data.get("data", {}).get("translations")
+            if not translations:
+                return None
+
+            return translations[0].get("translatedText")
         except Exception:
             return None
 
