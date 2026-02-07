@@ -2,6 +2,11 @@ import subprocess
 from redbot.core import commands
 
 
+def chunk_text(text: str, size: int = 1900):
+    for i in range(0, len(text), size):
+        yield text[i : i + size]
+
+
 class ExecVE(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -27,9 +32,12 @@ class ExecVE(commands.Cog):
                 await ctx.send(f"failed execve, ret = {ret}")
                 return
 
-            out = proc.stdout
-            MAX_LEN = 3000
-            for i in range(0, len(out), MAX_LEN):
-                await ctx.send(f"```\n{out[i : i + MAX_LEN]}\n```")
+            out = proc.stdout or proc.stderr
+            if not out:
+                await ctx.send("no output")
+
+            for chunk in chunk_text(out):
+                await ctx.send(f"```{chunk}```")
+
         except Exception as e:
             await ctx.send(f"somehting died: {e}")
