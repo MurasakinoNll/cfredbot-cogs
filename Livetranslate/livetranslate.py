@@ -72,15 +72,18 @@ class LiveTranslate(commands.Cog):
         await ctx.send("api key set")
 
     @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
+    async def on_message(self, ctx, message: discord.Message):
         if message.author.bot:
+            ctx.send("bot io")
             return
         if message.channel.id not in self.enabled_channels:
+            ctx.send("cid != curr")
             return
 
         if message.content.startswith("!translate"):
             return
         if self._englishy(message.content):
+            ctx.send("_e null")
             return
         translated = await self._translate(message.content)
         if translated is None:
