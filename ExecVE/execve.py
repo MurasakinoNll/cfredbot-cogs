@@ -15,6 +15,20 @@ class ExecVE(commands.Cog):
 
     @commands.is_owner()
     @commands.command()
+    async def execpipekill(self, ctx):
+        proc = self.sessions.get(ctx.channel.id)
+        if not proc:
+            await ctx.send("no active execpipe")
+            return
+
+        proc.terminate()
+        await proc.wait()
+
+        del self.sessions[ctx.channel.id]
+        await ctx.send("execpipe terminated")
+
+    @commands.is_owner()
+    @commands.command()
     async def execpipe(self, ctx, action: str, *, cmd: str):
         cid = ctx.channel.id
 
