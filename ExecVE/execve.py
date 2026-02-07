@@ -1,5 +1,4 @@
 import subprocess
-import shlex
 from redbot.core import commands
 
 
@@ -9,11 +8,19 @@ class ExecVE(commands.Cog):
 
     @commands.is_owner()
     @commands.command()
-    async def execve(self, ctx, *, cmexec: str):
-        args = shlex.split(cmexec)
+    async def execve(self, ctx):
+        content = ctx.message.content
+        prefix = ctx.prefix + ctx.command.qualified_name
+        if not content.startswith(prefix):
+            return
+
+        cmexec = content[len(prefix) :].lstrip()
+        if not cmexec:
+            await ctx.send("invalid input")
+            return
         try:
             proc = subprocess.run(
-                args, shell=True, capture_output=True, text=True, timeout=1
+                cmexec, shell=True, capture_output=True, text=True, timeout=1
             )
             ret = proc.returncode
             if proc.returncode != 0:
