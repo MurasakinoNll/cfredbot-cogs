@@ -94,7 +94,7 @@ class ExecVE(commands.Cog):
 
                 text = line.decode(errors="ignore")
                 for part in chunk_text(text):
-                    cleaned = re.sub(r"\x1B\[[0-?]*[a-jl-zA-Z]", "", part)
+                    cleaned = re.sub(r"(?:\x9B|\x1b\[[0-9;?]*[A-Za-ln-z])", "", part)
 
                     await ctx.send(f"```ansi\n{cleaned}```")
 
@@ -132,7 +132,7 @@ class ExecVE(commands.Cog):
                 await ctx.send("no output")
 
             for chunk in chunk_text(out):
-                cleaned = re.sub(r"\x1B\[[0-?]*[a-jl-zA-Z]", "", chunk)
+                cleaned = re.sub(r"(?:\x9B|\x1b\[[0-9;?]*[A-Za-ln-z])", "", chunk)
                 await ctx.send(f"```ansi\n{cleaned}```")
 
         except Exception as e:
