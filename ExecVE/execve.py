@@ -94,7 +94,9 @@ class ExecVE(commands.Cog):
 
                 text = line.decode(errors="ignore")
                 for part in chunk_text(text):
-                    await ctx.send(f"```{part}```")
+                    cleaned = re.sub(r"\x1B\[[0-?]*[a-jl-zA-Z]", "", part)
+
+                    await ctx.send(f"```ansi\n{cleaned}```")
 
             rc = await proc.wait()
             await ctx.send(f"process exited with code {rc}")
@@ -130,7 +132,7 @@ class ExecVE(commands.Cog):
                 await ctx.send("no output")
 
             for chunk in chunk_text(out):
-                cleaned = re.sub(r"\x1b\[[^m]*[A-Za-z]", "", chunk)
+                cleaned = re.sub(r"\x1B\[[0-?]*[a-jl-zA-Z]", "", chunk)
                 await ctx.send(f"```ansi\n{cleaned}```")
 
         except Exception as e:
