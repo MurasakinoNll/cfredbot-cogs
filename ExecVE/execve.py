@@ -1,5 +1,6 @@
 import subprocess
 import asyncio
+import re
 from redbot.core import commands
 
 
@@ -129,7 +130,9 @@ class ExecVE(commands.Cog):
                 await ctx.send("no output")
 
             for chunk in chunk_text(out):
-                await ctx.send(f"```{chunk}```")
+                pattern = r"\x1b\[[0-9;]*m"
+                cleaned = re.sub(pattern, "", chunk)
+                await ctx.send(f"```{cleaned}```")
 
         except Exception as e:
             await ctx.send(f"somehting died: {e}")
