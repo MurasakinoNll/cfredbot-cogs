@@ -8,20 +8,13 @@ UID = 512631443625869332
 class SnowyRoullete(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.Enabled = False
 
     @commands.admin()
     @commands.command()
     async def fucksnowy(self, ctx):
-        self.enabled = not self.enabled
-        state = "ENABLED" if self.enabled else "DISABLED"
-        await ctx.send(state)
-
         @commands.Cog.listener()
         async def on_message(self, member: discord.Member):
             snowy = member
-            if not self.enabled:
-                return
             if member.guild is None:
                 return
             if snowy != UID:
