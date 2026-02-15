@@ -4,7 +4,6 @@ import time
 from redbot.core import Config, commands
 
 UID = 512631443625869332
-dbgUID = 1049116028552093816
 
 
 class SnowyRoullete(commands.Cog):
@@ -37,7 +36,7 @@ class SnowyRoullete(commands.Cog):
             return
         if message.author.bot:
             return
-        if message.author.id not in (UID, dbgUID):
+        if message.author.id != UID:
             return
         if not self.enabled:
             return
@@ -62,3 +61,4 @@ class SnowyRoullete(commands.Cog):
             await message.channel.send(
                 f"rolled a {roll:.1f}, threshold = {threshold:1.f}"
             )
+
