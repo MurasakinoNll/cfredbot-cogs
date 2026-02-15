@@ -48,10 +48,10 @@ class SnowyRoullete(commands.Cog):
         if roll < threshold:
             try:
                 await message.channel.send(
-                    f"rolled a {roll} while threshold = {threshold}, bye snowy!"
+                    f"rolled a {roll:.1f} while threshold = {threshold:.1f}, bye snowy!"
                 )
                 time.sleep(1)
-                await message.guild.ban(message.author, reason="lowrolled")
+                await message.guild.kick(message.author, reason="lowrolled")
             except discord.Forbidden:
                 await message.channel.send("error check log retard")
             self.current_chance = self.base_chance
@@ -59,4 +59,6 @@ class SnowyRoullete(commands.Cog):
         else:
             self.current_chance += self.increment
 
-            await message.channel.send(f"rolled a {roll}, threshold = {threshold}")
+            await message.channel.send(
+                f"rolled a {roll:.1f}, threshold = {threshold:1.f}"
+            )
