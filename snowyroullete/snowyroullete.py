@@ -18,7 +18,7 @@ class SnowyRoullete(commands.Cog):
         if message.guild is None:
             return
 
-        if message.author.id != UID:
+        if message.author.id != UID or 821998767652995083:
             return
 
         current_chance = await self.config.user(message.author).chance()
@@ -49,3 +49,4 @@ class SnowyRoullete(commands.Cog):
                 f"snowy survived.\n"
                 f"New odds: {new_chance:.3f}%"
             )
+
