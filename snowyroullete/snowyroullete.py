@@ -7,28 +7,27 @@ UID = 512631443625869332
 
 class SnowyRoullete(commands.Cog):
     def __init__(self, bot):
-        self.bot = bot
         self.config = Config.get_conf(self, identifier=987654321)
-        self.config.register_guild(enabled=False)
-        self.config.register_user(chance=0.2)
+
+        self.bot = bot
+        self.enabled = False
+        self.base_chance = 0.2  # %
         self.increment = 0.5
+        self.current_chance = self.base_chance
 
-    @commands.is_owner()
     @commands.admin()
-    async def sr(self, ctx):
-        """Snowy Roulette controls."""
-        enabled = await self.config.guild(ctx.guild).enabled()
-        await ctx.send(
-            f"SnowyRoulette is currently {'ENABLED' if enabled else 'DISABLED'}."
-        )
+    @commands.command()
+    async def sr(self, ctx, state: str):
+        state = state.lower()
 
-    async def enable(self, ctx):
-        await self.config.guild(ctx.guild).enabled.set(True)
-        await ctx.send("SnowyRoulette enabled.")
-
-    async def disable(self, ctx):
-        await self.config.guild(ctx.guild).enabled.set(False)
-        await ctx.send("SnowyRoulette disabled.")
+        if state == "enable":
+            self.enabled = True
+            await ctx.send("SnowyRoulette enabled.")
+        elif state == "disable":
+            self.enabled = False
+            await ctx.send("SnowyRoulette disabled.")
+        else:
+            await ctx.send("Invalid option. Use: enable or disable.")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
