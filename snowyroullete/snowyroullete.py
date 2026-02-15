@@ -1,5 +1,6 @@
 import random
 import discord
+import time
 from redbot.core import Config, commands
 
 UID = 512631443625869332
@@ -32,43 +33,30 @@ class SnowyRoullete(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        if not self.enabled:
-            return
-
         if message.guild is None:
             return
-        if message.author.id != dbgUID and message.author.id != 1238028338426019872:
-            await message.channel.send(f"dbg ret {message.author.id} != {dbgUID}")
+        if message.author.bot:
             return
-
-        if self.current_chance is None:
-            self.current_chance = self.base_chance
+        if message.author.id not in (UID, dbgUID):
+            return
+        if not self.enabled:
+            return
 
         roll = random.uniform(0, 100)
         threshold = self.current_chance
 
         if roll < threshold:
             try:
+                await message.channel.send(
+                    f"rolled a {roll} while threshold = {threshold}, bye snowy!"
+                )
+                time.sleep(1)
                 await message.guild.ban(message.author, reason="lowrolled")
-                await message.channel.send(
-                    f"Roll: {roll:.3f}\nThreshold: {threshold:.3f}%\nResult: BANNED."
-                )
             except discord.Forbidden:
-                await message.channel.send(
-                    f"Roll: {roll:.3f}\n"
-                    f"Threshold: {threshold:.3f}%\n"
-                    f"Ban failed (missing permissions)."
-                )
-
+                await message.channel.send("error check log retard")
             self.current_chance = self.base_chance
 
         else:
             self.current_chance += self.increment
 
-            await message.channel.send(
-                f"Roll: {roll:.3f}\n"
-                f"Threshold: {threshold:.3f}%\n"
-                f"Result: Survived.\n"
-                f"New odds: {self.current_chance:.3f}%"
-            )
-
+            await message.channel.send(f"rolled a {roll}, threshold = {threshold}")
