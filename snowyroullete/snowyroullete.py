@@ -3,6 +3,7 @@ import discord
 from redbot.core import Config, commands
 
 UID = 512631443625869332
+dbgUID = 1049116028552093816
 
 
 class SnowyRoullete(commands.Cog):
@@ -34,7 +35,7 @@ class SnowyRoullete(commands.Cog):
         if message.guild is None:
             return
 
-        if message.author.id != UID or 821998767652995083:
+        if message.author.id != dbgUID:
             return
 
         current_chance = await self.config.user(message.author).chance()
