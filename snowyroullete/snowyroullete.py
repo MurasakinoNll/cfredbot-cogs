@@ -30,39 +30,45 @@ class SnowyRoullete(commands.Cog):
         else:
             await ctx.send("Invalid option. Use: enable or disable.")
 
-    @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
-        if message.guild is None:
-            return
 
-        if message.author.id != dbgUID:
-            return
+@commands.Cog.listener()
+async def on_message(self, message: discord.Message):
+    if not self.enabled:
+        return
 
-        current_chance = await self.config.user(message.author).chance()
+    if message.guild is None:
+        return
 
-        roll = random.uniform(0, 100)
+    if message.author.id != dbgUID:
+        return
 
-        if roll < current_chance:
-            await self.config.user(message.author).chance.set(0.2)
+    if self.current_chance is None:
+        self.current_chance = self.base_chance
 
-            try:
-                await message.guild.ban(message.author, reason="lowrolled")
-                await message.channel.send(
-                    f"Roll: {roll:.3f}\n"
-                    f"Threshold: {current_chance:.3f}%\n"
-                    f"snowy got fucked."
-                )
-            except discord.Forbidden:
-                await message.channel.send(
-                    f"Roll: {roll:.3f}\nThreshold: {current_chance:.3f}%\nmissing perms"
-                )
-        else:
-            new_chance = current_chance + self.increment
-            await self.config.user(message.author).chance.set(new_chance)
+    roll = random.uniform(0, 100)
+    threshold = self.current_chance
 
+    if roll < threshold:
+        try:
+            await message.guild.ban(message.author, reason="lowrolled")
+            await message.channel.send(
+                f"Roll: {roll:.3f}\nThreshold: {threshold:.3f}%\nResult: BANNED."
+            )
+        except discord.Forbidden:
             await message.channel.send(
                 f"Roll: {roll:.3f}\n"
-                f"Threshold: {current_chance:.3f}%\n"
-                f"snowy survived.\n"
-                f"New odds: {new_chance:.3f}%"
+                f"Threshold: {threshold:.3f}%\n"
+                f"Ban failed (missing permissions)."
             )
+
+        self.current_chance = self.base_chance
+
+    else:
+        self.current_chance += self.increment
+
+        await message.channel.send(
+            f"Roll: {roll:.3f}\n"
+            f"Threshold: {threshold:.3f}%\n"
+            f"Result: Survived.\n"
+            f"New odds: {self.current_chance:.3f}%"
+        )
