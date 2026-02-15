@@ -37,8 +37,7 @@ class SnowyRoullete(commands.Cog):
 
         if message.guild is None:
             return
-
-        if message.author.id != dbgUID or 1238028338426019872:
+        if message.author.id != dbgUID and message.author.id != 1238028338426019872:
             await message.channel.send(f"dbg ret {message.author.id} != {dbgUID}")
             return
 
@@ -72,3 +71,4 @@ class SnowyRoullete(commands.Cog):
                 f"Result: Survived.\n"
                 f"New odds: {self.current_chance:.3f}%"
             )
+
