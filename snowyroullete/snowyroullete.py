@@ -12,9 +12,18 @@ class SnowyRoullete(commands.Cog):
 
         self.bot = bot
         self.enabled = False
-        self.base_chance = 0.2  # %
-        self.increment = 0.5
+        self.base_chance = 0.1  # %
+        self.increment = 0.05
         self.current_chance = self.base_chance
+        self.special_words = {
+            "faggot",
+            "retard",
+            "she",
+            "porco dio",
+            "you should know",
+            "you would know",
+            "mongoloid",
+        }
 
     @commands.admin()
     @commands.command()
@@ -56,9 +65,12 @@ class SnowyRoullete(commands.Cog):
             self.current_chance = self.base_chance
 
         else:
-            self.current_chance += self.increment
-
-            await message.channel.send(
-                f"rolled a {roll:.1f}, threshold = {threshold:1.f}"
-            )
-
+            content_lower = message.content.lower()
+            if any(word in content_lower for word in self.special_words):
+                self.current_chance += 1.0
+                await message.channel.send("nu uh bad word snowy +1.0%")
+            else:
+                self.current_chance += self.increment
+                await message.channel.send(
+                    f"rolled a {roll:.1f}, threshold = {threshold:1.f}"
+                )
