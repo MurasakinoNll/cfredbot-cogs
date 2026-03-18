@@ -33,8 +33,15 @@ class CocUtils(commands.Cog):
         return role.members
 
     def _display_width(self, text: str) -> int:
-        w = wcwidth.wcswidth(text)
-        return w if w > 0 else len(text)  # fallback if wcswidth returns -1
+        width = 0
+        for char in text:
+            w = wcwidth.wcswidth(char)
+            if w <= 0:
+                w = 1  # fallback for unprintable / unknown
+            elif w == 2:
+                w = 1  # Discord renders wide chars as width 1
+            width += w
+        return width
 
     def _safe_name(self, name: str) -> str:
         return f"\u202a{name}\u202c"
