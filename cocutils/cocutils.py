@@ -50,10 +50,12 @@ class CocUtils(commands.Cog):
         lines = []
         for m, name in zip(members, safe_names):
             pad = max_len - self._display_width(name)
-            lines.append(f"\033[{color}m{name}{' ' * pad}\033[0m | {m.id}")
+            lines.append(
+                f"\033[{color}m{name}{' ' * pad}\033[0m | \033[40m{m.id}\033[0m"
+            )
         member_list = "\n".join(lines)
 
-        return f"**Role <@&{role_id}>:**\n```ansi{member_list}\n```"
+        return f"**Role <@&{role_id}>:**\n```ansi\n{member_list}\n```"
 
     def _build_contents(self, guild: discord.Guild) -> tuple[str, str]:
         """
@@ -65,8 +67,8 @@ class CocUtils(commands.Cog):
         block2 = self._build_block(guild, ROLE_IDS[1], "1;32")
         block3 = self._build_block(guild, ROLE_IDS[2], "1;31")
 
-        content1 = f"{block1}\n{block2}\n{block3}"
-        content2 = ""
+        content1 = f"{block1}\n{block2}\n"
+        content2 = f"{block3}"
         return content1, content2
 
     async def _fetch_or_none(self, channel: discord.TextChannel, msg_id: int | None):
