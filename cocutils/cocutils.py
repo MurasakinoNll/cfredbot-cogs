@@ -10,8 +10,6 @@ ROLE_IDS = [
     1483519620018077918,
 ]
 
-DIVIDER = "######################################################"
-
 
 class CocUtils(commands.Cog):
     """Displays and auto-updates a list of members with specific roles."""
@@ -39,11 +37,11 @@ class CocUtils(commands.Cog):
             member_list = "_No members_"
         else:
             member_list = "\n".join(f"• {m.display_name} ({m.id})" for m in members)
-        return f"**Role <@&{role_id}>**\n{member_list}"
+        return f"**Role <@&{role_id}>**\n\n```{member_list}```"
 
     def _build_contents(self, guild: discord.Guild) -> tuple[str, str]:
         """
-        Returns two message contents:
+        returns two message contents:
           msg1 -> Role 1 + divider + Role 2
           msg2 -> Role 3
         """
@@ -51,8 +49,8 @@ class CocUtils(commands.Cog):
         block2 = self._build_block(guild, ROLE_IDS[1])
         block3 = self._build_block(guild, ROLE_IDS[2])
 
-        content1 = f"```{block1}```\n\n{DIVIDER}\n\n```{block2}```\n\n{DIVIDER}\n\n"
-        content2 = f"```{block3}```\n\n{DIVIDER}\n\n"
+        content1 = f"{block1}\n\n\n{block2}\n\n\n"
+        content2 = f"{block3}"
         return content1, content2
 
     async def _fetch_or_none(self, channel: discord.TextChannel, msg_id: int | None):
