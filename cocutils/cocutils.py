@@ -5,8 +5,8 @@ from redbot.core.bot import Red
 CHANNEL_ID = 1483917391980396605
 
 ROLE_IDS = [
-    1483920076766838968,
-    1155152569560211483,
+    1235277600151179364,
+    1483520189902356641,
     1483519620018077918,
 ]
 
@@ -51,8 +51,8 @@ class CocUtils(commands.Cog):
         block2 = self._build_block(guild, ROLE_IDS[1])
         block3 = self._build_block(guild, ROLE_IDS[2])
 
-        content1 = f"{block1}\n\n{DIVIDER}\n\n{block2}"
-        content2 = block3
+        content1 = f"```{block1}```\n\n{DIVIDER}\n\n```{block2}```\n\n{DIVIDER}\n\n"
+        content2 = f"```{block3}```\n\n{DIVIDER}\n\n"
         return content1, content2
 
     async def _fetch_or_none(self, channel: discord.TextChannel, msg_id: int | None):
