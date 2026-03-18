@@ -36,8 +36,11 @@ class CocUtils(commands.Cog):
         if not members:
             member_list = "_No members_"
         else:
-            member_list = "\n".join(f"• {m.display_name} ({m.id})" for m in members)
-        return f"**Role <@&{role_id}>**\n\n```{member_list}```"
+            member_list = "\n".join(
+                f"\033[1;33m{m.display_name}\033[0m | \033[1;32m{m.id}\033[0m"
+                for m in members
+            )
+        return f"**Role <@&{role_id}>:**\n```ansi\n{member_list}\n```"
 
     def _build_contents(self, guild: discord.Guild) -> tuple[str, str]:
         """
@@ -49,8 +52,8 @@ class CocUtils(commands.Cog):
         block2 = self._build_block(guild, ROLE_IDS[1])
         block3 = self._build_block(guild, ROLE_IDS[2])
 
-        content1 = f"{block1}\n\n\n{block2}\n\n\n"
-        content2 = f"{block3}"
+        content1 = f"{block1}\n\n\n{block2}\n\n\n{block3}"
+        content2 = ""
         return content1, content2
 
     async def _fetch_or_none(self, channel: discord.TextChannel, msg_id: int | None):
