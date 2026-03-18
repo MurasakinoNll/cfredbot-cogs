@@ -36,7 +36,7 @@ class CocUtils(commands.Cog):
     def _display_width(self, text: str) -> int:
         clean = text.replace("\u202a", "").replace("\u202c", "")
         emoji_count = sum(1 for char in clean if unicodedata.category(char) == "So")
-        return len(clean) - emoji_count
+        return len(clean) + emoji_count
 
     def _safe_name(self, name: str) -> str:
         return f"\u202a{name}\u202c"
