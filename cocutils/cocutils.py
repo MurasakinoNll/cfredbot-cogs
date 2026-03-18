@@ -1,4 +1,5 @@
 import discord
+import wcwidth
 from redbot.core import commands
 from redbot.core.bot import Red
 
@@ -31,15 +32,27 @@ class CocUtils(commands.Cog):
             return []
         return role.members
 
+    def _display_width(self, text: str) -> int:
+        w = wcwidth.wcswidth(text)
+        return w if w > 0 else len(text)  # fallback if wcswidth returns -1
+
+    def _safe_name(self, name: str) -> str:
+        return f"\u202a{name}\u202c"
+
     def _build_block(self, guild: discord.Guild, role_id: int, color: str) -> str:
         members = self._get_role_members(guild, role_id)
         if not members:
             return f"**Role <@&{role_id}>:**\n```ansi\nNo members\n```"
-        max_len = max(len(m.display_name) for m in members)
-        member_list = "\n".join(
-            f"\033[{color}m{m.display_name:<{max_len}}\033[0m | \033[40m{m.id}\033[0m"
-            for m in members
-        )
+        safe_names = [self._safe_name(m.display_name) for m in members]
+        max_len = max(self._display_width(n) for n in safe_names)
+        lines = []
+        for m, name in zip(members, safe_names):
+            pad = max_len - self._display_width(name)
+            lines.append(
+                f"\033[{color}m{name}{' ' * pad}\033[0m | \033[40m{m.id}\033[0m"
+            )
+        member_list = "\n".join(lines)
+
         return f"**Role <@&{role_id}>:**\n```ansi\n{member_list}\n```"
 
     def _build_contents(self, guild: discord.Guild) -> tuple[str, str]:
