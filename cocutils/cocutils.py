@@ -34,12 +34,13 @@ class CocUtils(commands.Cog):
     def _build_block(self, guild: discord.Guild, role_id: int) -> str:
         members = self._get_role_members(guild, role_id)
         if not members:
-            member_list = "_No members_"
-        else:
-            member_list = "\n".join(
-                f"\033[1;33m{m.display_name}\033[0m | \033[1;32m{m.id}\033[0m"
-                for m in members
-            )
+            return f"**Role <@&{role_id}>:**\n```ansi\nNo members\n```"
+
+        max_len = max(len(m.display_name) for m in members)
+        member_list = "\n".join(
+            f"\033[1;31m{m.display_name:<{max_len}}\033[0m | \033[1;36m{m.id}\033[0m"
+            for m in members
+        )
         return f"**Role <@&{role_id}>:**\n```ansi\n{member_list}\n```"
 
     def _build_contents(self, guild: discord.Guild) -> tuple[str, str]:
