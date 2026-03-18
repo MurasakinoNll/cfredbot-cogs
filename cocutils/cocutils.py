@@ -33,7 +33,8 @@ class CocUtils(commands.Cog):
         return role.members
 
     def _display_width(self, text: str) -> int:
-        return len(text.replace("\u202a", "").replace("\u202c", ""))
+        clean = text.replace("\u202a", "").replace("\u202c", "")
+        return len(clean) + 1
 
     def _safe_name(self, name: str) -> str:
         return f"\u202a{name}\u202c"
