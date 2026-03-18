@@ -48,11 +48,11 @@ class CocUtils(commands.Cog):
           msg1 -> Role 1 + divider + Role 2
           msg2 -> Role 3
         """
-        block1 = self._build_block(guild, ROLE_IDS[0], "4;33")
-        block2 = self._build_block(guild, ROLE_IDS[1], "4;32")
-        block3 = self._build_block(guild, ROLE_IDS[2], "4;31")
+        block1 = self._build_block(guild, ROLE_IDS[0], "1;33")
+        block2 = self._build_block(guild, ROLE_IDS[1], "1;32")
+        block3 = self._build_block(guild, ROLE_IDS[2], "1;31")
 
-        content1 = f"{block1}\n\n\n{block2}\n\n\n{block3}"
+        content1 = f"{block1}\n{block2}\n{block3}"
         content2 = ""
         return content1, content2
 
