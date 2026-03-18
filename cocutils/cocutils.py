@@ -100,7 +100,6 @@ class CocUtils(commands.Cog):
     # Manual refresh command (owner / admin use)
     # ------------------------------------------------------------------
 
-    @commands.command(name="refreshroles")
     @commands.is_owner()
     async def refresh_roles(self, ctx: commands.Context):
         """Manually trigger a role-list refresh."""
