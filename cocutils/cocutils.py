@@ -3,77 +3,81 @@ from redbot.core import commands
 from redbot.core.bot import Red
 
 CHANNEL_ID = 1483917391980396605
-ROLE_ID = 1483920076766838968
+
+ROLE_IDS = [
+    1483920076766838968,
+    1155152569560211483,
+    1483519620018077918,
+]
+
+DIVIDER = "######################################################"
 
 
 class CocUtils(commands.Cog):
-    """Displays and auto-updates a list of members with a specific role."""
+    """Displays and auto-updates a list of members with specific roles."""
 
     def __init__(self, bot: Red):
         self.bot = bot
-        self._message_id: int | None = None  # cached message we own
+        # Two messages: [msg_id_1, msg_id_2]
+        self._message_ids: list[int | None] = [None, None]
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
-    async def _get_members_with_role(self) -> list[discord.Member]:
-        """Return all cached members that have the target role."""
-        role = None
-        for guild in self.bot.guilds:
-            role = guild.get_role(ROLE_ID)
-            if role:
-                break
+    def _get_role_members(
+        self, guild: discord.Guild, role_id: int
+    ) -> list[discord.Member]:
+        role = guild.get_role(role_id)
         if role is None:
             return []
         return role.members
 
-    def _build_content(self, members: list[discord.Member]) -> str:
+    def _build_block(self, guild: discord.Guild, role_id: int) -> str:
+        members = self._get_role_members(guild, role_id)
         if not members:
             member_list = "_No members_"
         else:
             member_list = "\n".join(f"• {m.display_name} ({m.id})" for m in members)
-        return f"**Role <@&{ROLE_ID}>**\n{member_list}"
+        return f"**Role <@&{role_id}>**\n{member_list}"
 
-    async def _get_or_create_message(
-        self, channel: discord.TextChannel, content: str
-    ) -> discord.Message:
+    def _build_contents(self, guild: discord.Guild) -> tuple[str, str]:
         """
-        Try to find our previously posted message by scanning recent history.
-        If not found, post a new one and cache its ID.
+        Returns two message contents:
+          msg1 -> Role 1 + divider + Role 2
+          msg2 -> Role 3
         """
-        if self._message_id:
-            try:
-                msg = await channel.fetch_message(self._message_id)
-                return msg
-            except discord.NotFound:
-                self._message_id = None
+        block1 = self._build_block(guild, ROLE_IDS[0])
+        block2 = self._build_block(guild, ROLE_IDS[1])
+        block3 = self._build_block(guild, ROLE_IDS[2])
 
-        # Scan last 50 messages for one we sent
-        async for msg in channel.history(limit=50):
-            if msg.author == self.bot.user and msg.content.startswith(
-                f"**Role <@&{ROLE_ID}>**"
-            ):
-                self._message_id = msg.id
-                return msg
+        content1 = f"{block1}\n\n{DIVIDER}\n\n{block2}"
+        content2 = block3
+        return content1, content2
 
-        # Nothing found — post fresh
-        msg = await channel.send(content)
-        self._message_id = msg.id
-        return msg
+    async def _fetch_or_none(self, channel: discord.TextChannel, msg_id: int | None):
+        if msg_id is None:
+            return None
+        try:
+            return await channel.fetch_message(msg_id)
+        except discord.NotFound:
+            return None
 
     async def _refresh(self):
-        """Rebuild and edit (or post) the role-member message."""
         channel = self.bot.get_channel(CHANNEL_ID)
         if not isinstance(channel, discord.TextChannel):
             return
 
-        members = await self._get_members_with_role()
-        content = self._build_content(members)
-        msg = await self._get_or_create_message(channel, content)
+        guild = channel.guild
+        content1, content2 = self._build_contents(guild)
 
-        if msg.content != content:
-            await msg.edit(content=content)
+        for i, content in enumerate([content1, content2]):
+            msg = await self._fetch_or_none(channel, self._message_ids[i])
+            if msg is None:
+                msg = await channel.send(content)
+                self._message_ids[i] = msg.id
+            elif msg.content != content:
+                await msg.edit(content=content)
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -92,14 +96,14 @@ class CocUtils(commands.Cog):
         before_ids = {r.id for r in before.roles}
         after_ids = {r.id for r in after.roles}
 
-        # Only care if our target role was added or removed
-        if ROLE_ID in (before_ids ^ after_ids):
+        if any(rid in (before_ids ^ after_ids) for rid in ROLE_IDS):
             await self._refresh()
 
     # ------------------------------------------------------------------
-    # Manual refresh command (owner / admin use)
+    # Manual refresh command
     # ------------------------------------------------------------------
 
+    @commands.command
     @commands.is_owner()
     async def refresh_roles(self, ctx: commands.Context):
         """Manually trigger a role-list refresh."""
