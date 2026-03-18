@@ -31,14 +31,13 @@ class CocUtils(commands.Cog):
             return []
         return role.members
 
-    def _build_block(self, guild: discord.Guild, role_id: int) -> str:
+    def _build_block(self, guild: discord.Guild, role_id: int, color: str) -> str:
         members = self._get_role_members(guild, role_id)
         if not members:
             return f"**Role <@&{role_id}>:**\n```ansi\nNo members\n```"
-
         max_len = max(len(m.display_name) for m in members)
         member_list = "\n".join(
-            f"\033[1;31m{m.display_name:<{max_len}}\033[0m | \033[1;36m{m.id}\033[0m"
+            f"\033[{color}m{m.display_name:<{max_len}}\033[0m | \033[1;32m{m.id}\033[0m"
             for m in members
         )
         return f"**Role <@&{role_id}>:**\n```ansi\n{member_list}\n```"
@@ -49,9 +48,9 @@ class CocUtils(commands.Cog):
           msg1 -> Role 1 + divider + Role 2
           msg2 -> Role 3
         """
-        block1 = self._build_block(guild, ROLE_IDS[0])
-        block2 = self._build_block(guild, ROLE_IDS[1])
-        block3 = self._build_block(guild, ROLE_IDS[2])
+        block1 = self._build_block(guild, ROLE_IDS[0], "0;43")
+        block2 = self._build_block(guild, ROLE_IDS[1], "0;32")
+        block3 = self._build_block(guild, ROLE_IDS[2], "0;31")
 
         content1 = f"{block1}\n\n\n{block2}\n\n\n{block3}"
         content2 = ""
