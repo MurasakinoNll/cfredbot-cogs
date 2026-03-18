@@ -50,12 +50,10 @@ class CocUtils(commands.Cog):
         lines = []
         for m, name in zip(members, safe_names):
             pad = max_len - self._display_width(name)
-            lines.append(
-                f"\033[{color}m{name}{' ' * pad}\033[0m | \033[40m{m.id}\033[0m"
-            )
+            lines.append(f"\033[{color}m{name}{' ' * pad}\033[0m | {m.id}")
         member_list = "\n".join(lines)
 
-        return f"**Role <@&{role_id}>:**\n```ansi\n{member_list}\n```"
+        return f"**Role <@&{role_id}>:**\n```ansi{member_list}\n```"
 
     def _build_contents(self, guild: discord.Guild) -> tuple[str, str]:
         """
