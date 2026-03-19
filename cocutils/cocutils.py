@@ -53,7 +53,7 @@ class CocUtils(commands.Cog):
             emoji_count = sum(1 for char in name if unicodedata.category(char) == 'So')
             pad = max_len - self._display_width(name) - emoji_count
             lines.append(
-                f"\033[{color}m{name}{' ' * pad}\033[0m | \033[1;32m{m.id}\033[0m"
+                f"\033[{color}m{name}{' ' * pad}\033[0m | id: \033[40m{m.id}\033[0m"
             )
 
         member_list = "\n".join(lines)
@@ -70,10 +70,10 @@ class CocUtils(commands.Cog):
         shared_ids = ids2 & ids3
         members4 = [m for m in members2 if m.id in shared_ids]
 
-        block1 = self._build_block(guild, members1, ROLE_IDS[0], "43")
-        block2 = self._build_block(guild, members2, ROLE_IDS[1], "0;32")
-        block3 = self._build_block(guild, members3, ROLE_IDS[2], "0;31")
-        block4 = self._build_block(guild, members4, None,        "0;35")
+        block1 = self._build_block(guild, members1, ROLE_IDS[0], "1:33")
+        block2 = self._build_block(guild, members2, ROLE_IDS[1], "1;32")
+        block3 = self._build_block(guild, members3, ROLE_IDS[2], "1;34")
+        block4 = self._build_block(guild, members4, None,        "1;35")
 
         content1 = f"{block1}\n{block2}"
         content2 = f"\n{block3}\n{block4}"
