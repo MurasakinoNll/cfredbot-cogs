@@ -1,5 +1,6 @@
 import unicodedata
-
+import os
+import json
 import discord
 from redbot.core import commands
 from redbot.core.bot import Red
@@ -12,7 +13,6 @@ ROLE_IDS = [
     1483519620018077918,
 ]
 
-
 class CocUtils(commands.Cog):
     """Displays and auto-updates a list of members with specific roles."""
 
@@ -24,6 +24,31 @@ class CocUtils(commands.Cog):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _load_altnames(self) -> dict[str, str]:
+        path = os.path.join(os.path.dirname(__file__), "data.json")
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
+
+    async def _refresh(self):
+        channel = self.bot.get_channel(CHANNEL_ID)
+        if not isinstance(channel, discord.TextChannel):
+            return
+
+        guild = channel.guild
+        altnames = self._load_altnames()         
+        content1, content2 = self._build_contents(guild, altnames)
+
+        for i, content in enumerate([content1, content2]):
+            msg = await self._fetch_or_none(channel, self._message_ids[i])
+            if msg is None:
+                msg = await channel.send(content)
+                self._message_ids[i] = msg.id
+            elif msg.content != content:
+                await msg.edit(content=content)
 
     def _get_role_members(
         self, guild: discord.Guild, role_id: int
@@ -40,7 +65,7 @@ class CocUtils(commands.Cog):
         clean = text.replace("\u202a", "").replace("\u202c", "")
         return len(clean)
 
-    def _build_block(self, guild: discord.Guild, members: list[discord.Member], role_id: int | None, color: str, max_len: int) -> str:
+    def _build_block(self, guild: discord.Guild, members: list[discord.Member], role_id: int | None, color: str, max_len: int, altnames: dict[str, str]) -> str:
         header = f"<@&{role_id}>" if role_id else "<@&1483520189902356641> and <@&1483519620018077918>"
         if not members:
             return f"**{header}:**\n```ansi\nNo members\n```"
@@ -50,14 +75,15 @@ class CocUtils(commands.Cog):
             name = self._safe_name(m.display_name)
             emoji_count = sum(1 for char in name if unicodedata.category(char) == 'So')
             pad = max_len - self._display_width(name) - emoji_count
+            alt = altnames.get(str(m.id), str(m.id))  # fallback to id if no entry
             lines.append(
-                f"\033[{color}m{name}{' ' * pad}\033[0m | id: \033[40m{m.id}\033[0m"
+                f"\033[{color}m{name}{' ' * pad}\033[0m | \033[40m{alt}\033[0m"
             )
 
         member_list = "\n".join(lines)
         return f"**{header}:**\n```ansi\n{member_list}\n```"
 
-    def _build_contents(self, guild: discord.Guild) -> tuple[str, str]:
+    def _build_contents(self, guild: discord.Guild, altnames: dict[str, str]) -> tuple[str, str]:
         members1 = self._get_role_members(guild, ROLE_IDS[0])
         members2 = self._get_role_members(guild, ROLE_IDS[1])
         members3 = self._get_role_members(guild, ROLE_IDS[2])
@@ -73,15 +99,14 @@ class CocUtils(commands.Cog):
             default=0
         )
 
-        block1 = self._build_block(guild, members1, ROLE_IDS[0], "1;33", max_len)
-        block2 = self._build_block(guild, members2, ROLE_IDS[1], "1;34", max_len)
-        block3 = self._build_block(guild, members3, ROLE_IDS[2], "1;31", max_len)
-        block4 = self._build_block(guild, members4, None,        "1;36", max_len)
+        block1 = self._build_block(guild, members1, ROLE_IDS[0], "1;33", max_len, altnames)
+        block2 = self._build_block(guild, members2, ROLE_IDS[1], "1;34", max_len, altnames)
+        block3 = self._build_block(guild, members3, ROLE_IDS[2], "1;31", max_len, altnames)
+        block4 = self._build_block(guild, members4, None,        "1;36", max_len, altnames)
 
         content1 = f"{block1}\n{block2}"
         content2 = f"\n{block3}\n{block4}"
         return content1, content2
-
     async def _fetch_or_none(self, channel: discord.TextChannel, msg_id: int | None):
         if msg_id is None:
             return None
@@ -90,21 +115,21 @@ class CocUtils(commands.Cog):
         except discord.NotFound:
             return None
 
-    async def _refresh(self):
-        channel = self.bot.get_channel(CHANNEL_ID)
-        if not isinstance(channel, discord.TextChannel):
-            return
-
-        guild = channel.guild
-        content1, content2 = self._build_contents(guild)
-
-        for i, content in enumerate([content1, content2]):
-            msg = await self._fetch_or_none(channel, self._message_ids[i])
-            if msg is None:
-                msg = await channel.send(content)
-                self._message_ids[i] = msg.id
-            elif msg.content != content:
-                await msg.edit(content=content)
+    # async def _refresh(self):
+    #     channel = self.bot.get_channel(CHANNEL_ID)
+    #     if not isinstance(channel, discord.TextChannel):
+    #         return
+    #
+    #     guild = channel.guild
+    #     content1, content2 = self._build_contents(guild)
+    #
+    #     for i, content in enumerate([content1, content2]):
+    #         msg = await self._fetch_or_none(channel, self._message_ids[i])
+    #         if msg is None:
+    #             msg = await channel.send(content)
+    #             self._message_ids[i] = msg.id
+    #         elif msg.content != content:
+    #             await msg.edit(content=content)
 
     # ------------------------------------------------------------------
     # Lifecycle
