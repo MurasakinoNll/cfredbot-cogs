@@ -1,6 +1,5 @@
 import discord
 import unicodedata
-import wcwidth
 from redbot.core import commands
 from redbot.core.bot import Red
 
@@ -33,28 +32,30 @@ class CocUtils(commands.Cog):
             return []
         return role.members
 
-    def _display_width(self, text: str) -> int:
-        clean = text.replace("\u202a", "").replace("\u202c", "")
-        emoji_count = sum(1 for char in clean if unicodedata.category(char) == "So")
-        return len(clean) + emoji_count
-
     def _safe_name(self, name: str) -> str:
         return f"\u202a{name}\u202c"
+
+    def _display_width(self, text: str) -> int:
+        clean = text.replace("\u202a", "").replace("\u202c", "")
+        return len(clean)
 
     def _build_block(self, guild: discord.Guild, role_id: int, color: str) -> str:
         members = self._get_role_members(guild, role_id)
         if not members:
             return f"**Role <@&{role_id}>:**\n```ansi\nNo members\n```"
+
         safe_names = [self._safe_name(m.display_name) for m in members]
         max_len = max(self._display_width(n) for n in safe_names)
+
         lines = []
         for m, name in zip(members, safe_names):
-            pad = max_len - self._display_width(name)
+            emoji_count = sum(1 for char in name if unicodedata.category(char) == "So")
+            pad = max_len - self._display_width(name) - emoji_count
             lines.append(
-                f"\033[{color}m{name}{' ' * pad}\033[0m | \033[40m{m.id}\033[0m"
+                f"\033[{color}m{name}{' ' * pad}\033[0m | \033[1;32m{m.id}\033[0m"
             )
-        member_list = "\n".join(lines)
 
+        member_list = "\n".join(lines)
         return f"**Role <@&{role_id}>:**\n```ansi\n{member_list}\n```"
 
     def _build_contents(self, guild: discord.Guild) -> tuple[str, str]:
