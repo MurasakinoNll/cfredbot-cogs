@@ -77,7 +77,7 @@ class CocUtils(commands.Cog):
             pad = max_len - self._display_width(name) - emoji_count
             alt = altnames.get(str(m.id), "unknown IGN")
             lines.append(
-                f"\033[{color}m{name}{' ' * pad}\033[0m | \033[40m{alt}\033[0m"
+                f"\033[{color}m{name}{' ' * pad}\033[0m | \033[4;37m{alt}\033[0m"
             )
 
         member_list = "\n".join(lines)
