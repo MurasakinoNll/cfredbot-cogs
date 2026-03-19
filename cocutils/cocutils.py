@@ -1,5 +1,6 @@
-import discord
 import unicodedata
+
+import discord
 from redbot.core import commands
 from redbot.core.bot import Red
 
@@ -39,37 +40,43 @@ class CocUtils(commands.Cog):
         clean = text.replace("\u202a", "").replace("\u202c", "")
         return len(clean)
 
-    def _build_block(self, guild: discord.Guild, role_id: int, color: str) -> str:
-        members = self._get_role_members(guild, role_id)
+    def _build_block(self, guild: discord.Guild, members: list[discord.Member], role_id: int | None, color: str) -> str:
+        header = f"<@&{role_id}>" if role_id else "both roles"
         if not members:
-            return f"**Role <@&{role_id}>:**\n```ansi\nNo members\n```"
+            return f"**Role {header}:**\n```ansi\nNo members\n```"
 
         safe_names = [self._safe_name(m.display_name) for m in members]
         max_len = max(self._display_width(n) for n in safe_names)
 
         lines = []
         for m, name in zip(members, safe_names):
-            emoji_count = sum(1 for char in name if unicodedata.category(char) == "So")
+            emoji_count = sum(1 for char in name if unicodedata.category(char) == 'So')
             pad = max_len - self._display_width(name) - emoji_count
             lines.append(
-                f"\033[{color}m{name}{' ' * pad}\033[0m | \033[40muuid: ({m.id})\033[0m\n"
+                f"\033[{color}m{name}{' ' * pad}\033[0m | \033[1;32m{m.id}\033[0m"
             )
 
         member_list = "\n".join(lines)
-        return f"**Role <@&{role_id}>:**\n```ansi\n{member_list}\n```"
+        return f"**{header}:**\n```ansi\n{member_list}\n```"
 
     def _build_contents(self, guild: discord.Guild) -> tuple[str, str]:
-        """
-        returns two message contents:
-          msg1 -> Role 1 + divider + Role 2
-          msg2 -> Role 3
-        """
-        block1 = self._build_block(guild, ROLE_IDS[0], "1;33")
-        block2 = self._build_block(guild, ROLE_IDS[1], "1;34")
-        block3 = self._build_block(guild, ROLE_IDS[2], "1;31")
+        members1 = self._get_role_members(guild, ROLE_IDS[0])
+        members2 = self._get_role_members(guild, ROLE_IDS[1])
+        members3 = self._get_role_members(guild, ROLE_IDS[2])
 
-        content1 = f"{block1}\n{block2}\n"
-        content2 = f"{block3}"
+        # Users present in both role 2 AND role 3
+        ids2 = {m.id for m in members2}
+        ids3 = {m.id for m in members3}
+        shared_ids = ids2 & ids3
+        members4 = [m for m in members2 if m.id in shared_ids]
+
+        block1 = self._build_block(guild, members1, ROLE_IDS[0], "43")
+        block2 = self._build_block(guild, members2, ROLE_IDS[1], "0;32")
+        block3 = self._build_block(guild, members3, ROLE_IDS[2], "0;31")
+        block4 = self._build_block(guild, members4, None,        "0;35")
+
+        content1 = f"{block1}\n{block2}"
+        content2 = f"\n{block3}\n{block4}"
         return content1, content2
 
     async def _fetch_or_none(self, channel: discord.TextChannel, msg_id: int | None):
