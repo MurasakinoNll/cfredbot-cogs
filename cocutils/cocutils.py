@@ -41,7 +41,7 @@ class CocUtils(commands.Cog):
         return len(clean)
 
     def _build_block(self, guild: discord.Guild, members: list[discord.Member], role_id: int | None, color: str) -> str:
-        header = f"<@&{role_id}>" if role_id else "both roles"
+        header = f"<@&{role_id}>" if role_id else "<@&1483520189902356641> and <@&1483519620018077918>"
         if not members:
             return f"**Role {header}:**\n```ansi\nNo members\n```"
 
@@ -70,10 +70,10 @@ class CocUtils(commands.Cog):
         shared_ids = ids2 & ids3
         members4 = [m for m in members2 if m.id in shared_ids]
 
-        block1 = self._build_block(guild, members1, ROLE_IDS[0], "1:33")
-        block2 = self._build_block(guild, members2, ROLE_IDS[1], "1;32")
-        block3 = self._build_block(guild, members3, ROLE_IDS[2], "1;34")
-        block4 = self._build_block(guild, members4, None,        "1;35")
+        block1 = self._build_block(guild, members1, ROLE_IDS[0], "1;33")
+        block2 = self._build_block(guild, members2, ROLE_IDS[1], "1;34")
+        block3 = self._build_block(guild, members3, ROLE_IDS[2], "1;31")
+        block4 = self._build_block(guild, members4, None,        "1;36")
 
         content1 = f"{block1}\n{block2}"
         content2 = f"\n{block3}\n{block4}"
