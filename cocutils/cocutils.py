@@ -40,16 +40,14 @@ class CocUtils(commands.Cog):
         clean = text.replace("\u202a", "").replace("\u202c", "")
         return len(clean)
 
-    def _build_block(self, guild: discord.Guild, members: list[discord.Member], role_id: int | None, color: str) -> str:
+    def _build_block(self, guild: discord.Guild, members: list[discord.Member], role_id: int | None, color: str, max_len: int) -> str:
         header = f"<@&{role_id}>" if role_id else "<@&1483520189902356641> and <@&1483519620018077918>"
         if not members:
-            return f"**Role {header}:**\n```ansi\nNo members\n```"
-
-        safe_names = [self._safe_name(m.display_name) for m in members]
-        max_len = max(self._display_width(n) for n in safe_names)
+            return f"**{header}:**\n```ansi\nNo members\n```"
 
         lines = []
-        for m, name in zip(members, safe_names):
+        for m in members:
+            name = self._safe_name(m.display_name)
             emoji_count = sum(1 for char in name if unicodedata.category(char) == 'So')
             pad = max_len - self._display_width(name) - emoji_count
             lines.append(
@@ -64,16 +62,21 @@ class CocUtils(commands.Cog):
         members2 = self._get_role_members(guild, ROLE_IDS[1])
         members3 = self._get_role_members(guild, ROLE_IDS[2])
 
-        # Users present in both role 2 AND role 3
         ids2 = {m.id for m in members2}
         ids3 = {m.id for m in members3}
         shared_ids = ids2 & ids3
         members4 = [m for m in members2 if m.id in shared_ids]
 
-        block1 = self._build_block(guild, members1, ROLE_IDS[0], "1;33")
-        block2 = self._build_block(guild, members2, ROLE_IDS[1], "1;34")
-        block3 = self._build_block(guild, members3, ROLE_IDS[2], "1;31")
-        block4 = self._build_block(guild, members4, None,        "1;36")
+        all_members = members1 + members2 + members3 + members4
+        max_len = max(
+            (self._display_width(self._safe_name(m.display_name)) for m in all_members),
+            default=0
+        )
+
+        block1 = self._build_block(guild, members1, ROLE_IDS[0], "1;33", max_len)
+        block2 = self._build_block(guild, members2, ROLE_IDS[1], "1;34", max_len)
+        block3 = self._build_block(guild, members3, ROLE_IDS[2], "1;31", max_len)
+        block4 = self._build_block(guild, members4, None,        "1;36", max_len)
 
         content1 = f"{block1}\n{block2}"
         content2 = f"\n{block3}\n{block4}"
