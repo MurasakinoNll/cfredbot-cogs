@@ -52,7 +52,7 @@ class CocUtils(commands.Cog):
             emoji_count = sum(1 for char in name if unicodedata.category(char) == "So")
             pad = max_len - self._display_width(name) - emoji_count
             lines.append(
-                f"\033[{color}m{name}{' ' * pad}\033[0m | \033[1;32m{m.id}\033[0m"
+                f"\033[{color}m{name}{' ' * pad}\033[0m | \033[40muuid: ({m.id})\033[0m\n"
             )
 
         member_list = "\n".join(lines)
@@ -65,7 +65,7 @@ class CocUtils(commands.Cog):
           msg2 -> Role 3
         """
         block1 = self._build_block(guild, ROLE_IDS[0], "1;33")
-        block2 = self._build_block(guild, ROLE_IDS[1], "1;32")
+        block2 = self._build_block(guild, ROLE_IDS[1], "1;34")
         block3 = self._build_block(guild, ROLE_IDS[2], "1;31")
 
         content1 = f"{block1}\n{block2}\n"
