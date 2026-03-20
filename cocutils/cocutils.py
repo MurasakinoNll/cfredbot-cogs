@@ -185,7 +185,7 @@ class CocUtils(commands.Cog):
         if not isinstance(announcechannel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)):
             await ctx.send("announce channel not found.")
             return
-        chunk_size = 1990
+        chunk_size = 1690
         chunks = [out[i:i+chunk_size] for i in range(0, len(out), chunk_size)]
         for chunk in chunks:
             await announcechannel.send(f"```json\n{chunk}\n```")
