@@ -3,7 +3,7 @@ import os
 import json
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 
 import aiohttp
@@ -113,7 +113,7 @@ class CocUtils(commands.Cog):
         self._war_bangla_id: int | None = None
         self._war_main_plain_id: int | None = None
         self._war_task: asyncio.Task | None = None
-        self._war_clock: WarClock | None = None
+        self._war_clocks: dict[str, WarClock] = {}
         self._clock_task: asyncio.Task | None = None
         self._notified: set[str] = set()
 
@@ -363,7 +363,7 @@ class CocUtils(commands.Cog):
         for m in war.clan.members:
             attacks_str = "  ".join(fmt_attack(a) for a in m.attacks) if m.attacks else "no attacks"
             lines.append(
-                f"\033[1;33m{m.name}\033[0m: {attacks_str}  |  {m.opponent_attacks}"
+                f"\033[1;33m{m.name}\033[0m: {attacks_str}  ---  {m.opponent_attacks} attacks defended"
             )
 
         return "```ansi\n" + "\n".join(lines) + "\n```"
@@ -382,38 +382,35 @@ class CocUtils(commands.Cog):
             await asyncio.sleep(60)
 
     async def _tick_clock(self):
-        if self._war_clock is None:
-            return
+        now = datetime.now(UTC)
+        for clan_id, clock in self._war_clocks.items():
+            phase = clock.current_phase(now)
 
-        now   = datetime.utcnow()
-        clock = self._war_clock
-        phase = clock.current_phase(now)
+            if phase == "preparation" and f"{clan_id}:reset" not in self._notified:
+                self._notified = {k for k in self._notified if not k.startswith(clan_id)}
+                self._notified.add(f"{clan_id}:reset")
 
-        if phase == "preparation" and "reset" not in self._notified:
-            self._notified = {"reset"}
+            secs_to_queue = (clock.queue_start - now).total_seconds()
 
-        secs_to_queue = (clock.queue_start - now).total_seconds()
+            if phase in ("cooldown", "war") and secs_to_queue <= 3600 and f"{clan_id}:1h" not in self._notified:
+                self._notified.add(f"{clan_id}:1h")
+                await self._on_queue_approaching("1h", clock)
 
-        if phase in ("cooldown", "war") and secs_to_queue <= 3600 and "1h" not in self._notified:
-            self._notified.add("1h")
-            await self._on_queue_approaching("1h", clock)
+            if phase in ("cooldown", "war") and secs_to_queue <= 1800 and f"{clan_id}:30m" not in self._notified:
+                self._notified.add(f"{clan_id}:30m")
+                await self._on_queue_approaching("30m", clock)
 
-        if phase in ("cooldown", "war") and secs_to_queue <= 1800 and "30m" not in self._notified:
-            self._notified.add("30m")
-            await self._on_queue_approaching("30m", clock)
+            if phase in ("cooldown", "war") and secs_to_queue <= 300 and f"{clan_id}:5m" not in self._notified:
+                self._notified.add(f"{clan_id}:5m")
+                await self._on_queue_approaching("5m", clock)
 
-        if phase in ("cooldown", "war") and secs_to_queue <= 300 and "5m" not in self._notified:
-            self._notified.add("5m")
-            await self._on_queue_approaching("5m", clock)
+            if phase == "queue" and f"{clan_id}:war_queue" not in self._notified:
+                self._notified.add(f"{clan_id}:war_queue")
+                await self._on_war_queue(clock)
 
-        if phase == "queue" and "war_queue" not in self._notified:
-            self._notified.add("war_queue")
-            await self._on_war_queue(clock)
-
-        if phase == "ended" and "war_end" not in self._notified:
-            self._notified.add("war_end")
-            await self._on_war_end(clock)
-
+            if phase == "ended" and f"{clan_id}:war_end" not in self._notified:
+                self._notified.add(f"{clan_id}:war_end")
+                await self._on_war_end(clock)
     ###########################################################################
     ### WAR CLOCK — EVENT HOOKS
     ###########################################################################
@@ -455,16 +452,17 @@ class CocUtils(commands.Cog):
         main_plain: str | None = None
         if main_data and main_data.get("state", "") not in ("notInWar", "CLAN_NOT_FOUND", "ACCESS_DENIED"):
             main_war        = self._parse_war(main_data)
-            self._war_clock = WarClock.from_war(main_war)
+            self._war_clocks[CLAN_ID] = WarClock.from_war(main_war)
             main_body       = self._format_body(main_war)
-            main_plain      = self._format_plain(main_war, self._war_clock)
+            main_plain = self._format_plain(main_war, self._war_clocks[CLAN_ID])
         elif main_data:
             main_plain = f"Main clan not in war (state: `{main_data.get('state', 'unknown')}`)"
 
         bangla_plain: str | None = None
         if bangla_data and bangla_data.get("state", "") not in ("notInWar", "CLAN_NOT_FOUND", "ACCESS_DENIED"):
             bangla_war   = self._parse_war(bangla_data)
-            bangla_plain = self._format_plain(bangla_war)
+            self._war_clocks[BANGLA_ID] = WarClock.from_war(bangla_war)
+            bangla_plain = self._format_plain(bangla_war, self._war_clocks[BANGLA_ID])
         elif bangla_data:
             bangla_plain = f"Bangla clan not in war (state: `{bangla_data.get('state', 'unknown')}`)"
 
@@ -485,3 +483,24 @@ class CocUtils(commands.Cog):
             except Exception as e:
                 print(f"[cocutils] war loop error: {e}")
             await asyncio.sleep(60)
+
+    @commands.is_owner()
+    @commands.command()
+    async def wardbg(self, ctx: commands.Context):
+        now = datetime.now(UTC)
+        lines = [f"UTC now: `{now.strftime('%Y-%m-%d %H:%M:%S')}`"]
+        if not self._war_clocks:
+            lines.append("No war clocks loaded.")
+        for clan_id, clock in self._war_clocks.items():
+            phase = clock.current_phase(now)
+            secs_to_queue = (clock.queue_start - now).total_seconds()
+            secs_to_end   = (clock.war_end - now).total_seconds()
+            lines.append(
+                f"\n**{clan_id}**"
+                f"\n  phase: `{phase}`"
+                f"\n  war ends in: `{secs_to_end:.0f}s` ({secs_to_end/3600:.2f}h)"
+                f"\n  queue opens in: `{secs_to_queue:.0f}s` ({secs_to_queue/3600:.2f}h)"
+                f"\n  queue at: `{clock.queue_start.strftime('%Y-%m-%d %H:%M:%S')} UTC`"
+                f"\n  notified flags: `{[k for k in self._notified if k.startswith(clan_id)]}`"
+            )
+        await ctx.send("\n".join(lines))
