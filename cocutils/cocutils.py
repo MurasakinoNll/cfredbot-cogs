@@ -8,6 +8,7 @@ from datetime import datetime
 from urllib.parse import quote
 
 import aiohttp
+from attr import s
 import discord
 from redbot.core import commands
 from redbot.core.bot import Red
@@ -73,7 +74,7 @@ class CocUtils(commands.Cog):
         self._war_message_ids: list[int | None] = []
         self._war_task: asyncio.Task | None = None
 
-
+   
     ###########################################################################
     ### LIFECYCLE
     ###########################################################################
@@ -94,13 +95,14 @@ class CocUtils(commands.Cog):
     ###########################################################################
     ### COMMANDS
     ###########################################################################
+
     @commands.is_owner()
     @commands.command()
     async def refresh_roles(self, ctx: commands.Context):
         """Manually trigger a role-list refresh."""
         await self._refresh()
         await ctx.tick()
-    
+
     @commands.is_owner()
     @commands.command()
     async def clanstat(self, ctx: commands.Context):
@@ -295,69 +297,37 @@ class CocUtils(commands.Cog):
             return t
 
     def _format_war(self, war: WarState) -> tuple[str, str]:
-        our = war.clan.name
-        opp = war.opponent.name
-        total_width = 80
-        vs = "vs"
-        left_pad  = (total_width // 2) - len(our) - len(vs) // 2
-        right_pad = total_width - len(our) - len(opp) - len(vs) - left_pad
+        our_stats = f"⭐{war.clan.stars}  {war.clan.attacks}  {war.clan.destruction:.1f}%"
+        opp_stats = f"⭐{war.opponent.stars}  {war.opponent.attacks}  {war.opponent.destruction:.1f}%"
 
-        header_line  = f"\033[1;33m{our}\033[0m{' ' * left_pad}{vs}{' ' * right_pad}\033[1;31m{opp}\033[0m"
-        our_stats    = f"⭐{war.clan.stars}  ⚔️{war.clan.attacks}  💥{war.clan.destruction:.1f}%"
-        opp_stats    = f"⭐{war.opponent.stars}  ⚔️{war.opponent.attacks}  💥{war.opponent.destruction:.1f}%"
-        stats_pad    = total_width - len(our_stats) - len(opp_stats)
-        stats_line   = f"\033[1;33m{our_stats}\033[0m{' ' * stats_pad}\033[1;31m{opp_stats}\033[0m"
-        divider      = "─" * total_width
-
-        # Raw text header — outside any code block
-        raw_header = (
-            f"{our} vs {opp}\n"
-            f"{our_stats}{'  ' * 10}{opp_stats}\n"
-            f"Prep: {self._fmt_discord_time(war.preparation_start, 'T')}"
-            f"  |  Start: {self._fmt_discord_time(war.start_time, 'R')}"
-            f"  |  End: {self._fmt_discord_time(war.end_time, 'f')}"
+        # Raw text footer — plain Discord message with timestamps
+        raw_footer = (
+            f"## **{war.clan.name}** vs **{war.opponent.name}**\n"
+            f"### {our_stats}  |  {opp_stats}\n"
+            f"# Prep: {self._fmt_discord_time(war.preparation_start, 'R')}"
+            f"  ---  Start: {self._fmt_discord_time(war.start_time, 'R')}"
+            f"  ---  End: {self._fmt_discord_time(war.end_time, 'f')} / {self._fmt_discord_time(war.end_time, 'R')}"
         )
 
-        def fmt_member(m: WarMember, color: str) -> list[str]:
-            stars  = m.attacks[0].get("stars", 0) if m.attacks else 0
-            destro = m.attacks[0].get("destructionPercentage", 0) if m.attacks else 0
-            return [
-                f"\033[{color}m{m.name}\033[0m",
-                f"  ⭐ {stars}",
-                f"  💥 {destro}%",
-                f"  📍 #{m.map_position}",
-                f"  🏠 TH{m.townhall_level}",
-                "",
-            ]
+        # Attack lines — one per member, sorted by map position
+        def fmt_attack(a: dict) -> str:
+            stars = a.get("stars", 0)
+            pct   = a.get("destructionPercentage", 0)
+            return f"{stars}⭐ {pct}%"
 
-        our_lines: list[str] = []
+        lines = []
         for m in war.clan.members:
-            our_lines += fmt_member(m, "1;33")
+            attacks_str = "  ".join(fmt_attack(a) for a in m.attacks) if m.attacks else "no attacks"
+            lines.append(
+                f"\033[1;33m{m.name}\033[0m: {attacks_str}  |  {m.opponent_attacks}"
+            )
 
-        opp_lines: list[str] = []
-        for m in war.opponent.members:
-            opp_lines += fmt_member(m, "1;31")
+        body = "```ansi\n" + "\n".join(lines) + "\n```"
 
-        max_lines = max(len(our_lines), len(opp_lines))
-        our_lines += [""] * (max_lines - len(our_lines))
-        opp_lines += [""] * (max_lines - len(opp_lines))
-
-        ansi_escape = re.compile(r'\033\[[0-9;]*m')
-        col_width = total_width // 2
-        member_rows = []
-        for left, right in zip(our_lines, opp_lines):
-            left_visual = len(ansi_escape.sub('', left))
-            pad = col_width - left_visual
-            member_rows.append(f"{left}{' ' * pad}{right}")
-
-        members_block = "\n".join(member_rows)
-        ansi_body = f"```ansi\n{header_line}\n{stats_line}\n{divider}\n{members_block}\n```"
-
-        # raw_header goes at the bottom, ansi_body at the top
-        return ansi_body, raw_header
+        return body, raw_footer
 
     def _chunk_war(self, war: WarState) -> list[str]:
-        ansi_body, raw_header = self._format_war(war)
+        ansi_body, raw_footer = self._format_war(war)
 
         inner = ansi_body
         if inner.startswith("```ansi\n"):
@@ -380,8 +350,8 @@ class CocUtils(commands.Cog):
         if current_lines:
             chunks.append("```ansi\n" + "\n".join(current_lines) + "\n```")
 
-        # raw header appended as the last message
-        chunks.append(raw_header)
+        # Raw footer is always the last message
+        chunks.append(raw_footer)
         return chunks
 
     ###########################################################################
@@ -442,3 +412,10 @@ class CocUtils(commands.Cog):
                 print(f"[cocutils] war loop error: {e}")
             await asyncio.sleep(60)
 
+
+###############################################################################
+### SETUP
+###############################################################################
+
+async def setup(bot: Red):
+    await bot.add_cog(CocUtils(bot))
