@@ -2,16 +2,21 @@ import unicodedata
 import os
 import json
 import discord
+import aiohttp
+from urllib.parse import quote
 from redbot.core import commands
 from redbot.core.bot import Red
 
 CHANNEL_ID = 1483917391980396605
-
+ANNOUNCE_ID = 1484351000788598927
 ROLE_IDS = [
     1235277600151179364,
     1483520189902356641,
     1483519620018077918,
 ]
+
+CLAN_ID = "#2YUYR2LPV"
+CLASH_APIKEY = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiIsImtpZCI6IjI4YTMxOGY3LTAwMDAtYTFlYi03ZmExLTJjNzQzM2M2Y2NhNSJ9.eyJpc3MiOiJzdXBlcmNlbGwiLCJhdWQiOiJzdXBlcmNlbGw6Z2FtZWFwaSIsImp0aSI6Ijc4ODcxNTk3LTgxZDQtNDEzMS1hNTVmLWZkMjljMTE0NDM0ZiIsImlhdCI6MTc3Mzk2NzE5OSwic3ViIjoiZGV2ZWxvcGVyLzZjOGMxYmRjLWI3ODQtMjA5Ny0wOGQ5LTdiMWEzYTM2Y2Y2MCIsInNjb3BlcyI6WyJjbGFzaCJdLCJsaW1pdHMiOlt7InRpZXIiOiJkZXZlbG9wZXIvc2lsdmVyIiwidHlwZSI6InRocm90dGxpbmcifSx7ImNpZHJzIjpbIjE3Ni4yOC4xNDkuMjUyIl0sInR5cGUiOiJjbGllbnQifV19.JQmdedEYUKHwYyiHPlEXxSyplf8MyCx6dgk4QFJuRs3TrroFLYoXAICNPVsyaupmaioKSUra8sfOTwUPToyXdA"
 
 class CocUtils(commands.Cog):
     """Displays and auto-updates a list of members with specific roles."""
@@ -161,3 +166,27 @@ class CocUtils(commands.Cog):
         """Manually trigger a role-list refresh."""
         await self._refresh()
         await ctx.tick()
+
+    @commands.is_owner()
+    @commands.command()
+    async def clanstat(self, ctx: commands.Context):
+        encodedurlid = quote(CLAN_ID, safe="")
+        url = f"https://api.clashofclans.com/v1/clans/{encodedurlid}/currentwar"
+        header = {"Authorization": f"Bearer {CLASH_APIKEY}"}
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=header) as response:
+                if response.status != 200:
+                    await ctx.send(f"coc api shat itself: {response.status}")
+                    return
+                data = await response.json()
+
+        out = json.dumps(data, indent=2)
+        announcechannel = self.bot.get_channel(ANNOUNCE_ID)
+        if not isinstance(announcechannel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)):
+            await ctx.send("announce channel not found.")
+            return
+        chunk_size = 1990
+        chunks = [out[i:i+chunk_size] for i in range(0, len(out), chunk_size)]
+        for chunk in chunks:
+            await announcechannel.send(f"```json\n{chunk}\n```")
