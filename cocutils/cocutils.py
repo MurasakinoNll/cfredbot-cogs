@@ -1,4 +1,3 @@
-import re
 import unicodedata
 import os
 import json
@@ -8,7 +7,6 @@ from datetime import datetime
 from urllib.parse import quote
 
 import aiohttp
-from attr import s
 import discord
 from redbot.core import commands
 from redbot.core.bot import Red
@@ -22,6 +20,7 @@ ROLE_IDS = [
     1483519620018077918,
 ]
 CLAN_ID = "#2YUYR2LPV"
+BANGLA_ID = "#2YP2PC8PJ"
 CLASH_APIKEY = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiIsImtpZCI6IjI4YTMxOGY3LTAwMDAtYTFlYi03ZmExLTJjNzQzM2M2Y2NhNSJ9.eyJpc3MiOiJzdXBlcmNlbGwiLCJhdWQiOiJzdXBlcmNlbGw6Z2FtZWFwaSIsImp0aSI6Ijg2N2E4N2Q4LTRiZGYtNDI3NC1hOWUyLWNjNDFkODNiZGVmMiIsImlhdCI6MTc3Mzk2OTE1MSwic3ViIjoiZGV2ZWxvcGVyLzZjOGMxYmRjLWI3ODQtMjA5Ny0wOGQ5LTdiMWEzYTM2Y2Y2MCIsInNjb3BlcyI6WyJjbGFzaCJdLCJsaW1pdHMiOlt7InRpZXIiOiJkZXZlbG9wZXIvc2lsdmVyIiwidHlwZSI6InRocm90dGxpbmcifSx7ImNpZHJzIjpbIjE3Ni4yOC4xNDkuMjUyIiwiNS45NS4yNTAuNzEiXSwidHlwZSI6ImNsaWVudCJ9XX0.4A7gfJGrghRbetI6bFN1A8rJE9GOex2hV45oSv0xNJekKup4AEmnaa5rjfN0rjociaoXXH2qTDEc-wbbn4GPAQ"
 
 
@@ -107,7 +106,7 @@ class CocUtils(commands.Cog):
     @commands.command()
     async def clanstat(self, ctx: commands.Context):
         """Manually trigger a war status refresh."""
-        await self._fetch_and_post_war()
+        await self._fetch_and_post_war("2YP2PC8PJ")
         await ctx.tick()
 
     ###########################################################################
@@ -207,8 +206,8 @@ class CocUtils(commands.Cog):
     ### WAR — API
     ###########################################################################
 
-    async def _fetch_war_data(self) -> dict | None:
-        encoded = quote(CLAN_ID, safe="")
+    async def _fetch_war_data(self, id: str) -> dict | None:
+        encoded = quote(id, safe="")
         url = f"https://api.clashofclans.com/v1/clans/{encoded}/currentwar"
         headers = {
             "Authorization": f"Bearer {CLASH_APIKEY}",
@@ -300,7 +299,6 @@ class CocUtils(commands.Cog):
         our_stats = f"⭐{war.clan.stars}  {war.clan.attacks}  {war.clan.destruction:.1f}%"
         opp_stats = f"⭐{war.opponent.stars}  {war.opponent.attacks}  {war.opponent.destruction:.1f}%"
 
-        # Raw text footer — plain Discord message with timestamps
         raw_footer = (
             f"## **{war.clan.name}** vs **{war.opponent.name}**\n"
             f"### {our_stats}  |  {opp_stats}\n"
@@ -309,7 +307,6 @@ class CocUtils(commands.Cog):
             f"  ---  End: {self._fmt_discord_time(war.end_time, 'f')} / {self._fmt_discord_time(war.end_time, 'R')}"
         )
 
-        # Attack lines — one per member, sorted by map position
         def fmt_attack(a: dict) -> str:
             stars = a.get("stars", 0)
             pct   = a.get("destructionPercentage", 0)
@@ -358,12 +355,12 @@ class CocUtils(commands.Cog):
     ### WAR — POSTING
     ###########################################################################
 
-    async def _fetch_and_post_war(self):
+    async def _fetch_and_post_war(self, id: str):
         channel = self.bot.get_channel(ANNOUNCE_ID)
         if not isinstance(channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)):
             return
 
-        data = await self._fetch_war_data()
+        data = await self._fetch_war_data(id)
         if data is None:
             return
 
@@ -407,15 +404,9 @@ class CocUtils(commands.Cog):
         await self.bot.wait_until_ready()
         while not self.bot.is_closed():
             try:
-                await self._fetch_and_post_war()
+                await self._fetch_and_post_war(BANGLA_ID)
+                await self._fetch_and_post_war(CLAN_ID)
             except Exception as e:
                 print(f"[cocutils] war loop error: {e}")
             await asyncio.sleep(60)
 
-
-###############################################################################
-### SETUP
-###############################################################################
-
-async def setup(bot: Red):
-    await bot.add_cog(CocUtils(bot))
