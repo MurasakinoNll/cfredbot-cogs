@@ -1,3 +1,4 @@
+import re
 import unicodedata
 import os
 import json
@@ -70,10 +71,14 @@ class CocUtils(commands.Cog):
     def __init__(self, bot: Red):
         self.bot = bot
         self._message_ids: list[int | None] = [None, None]
-        self._war_message_ids: list[int | None] = []
+        # Main clan body chunks + bangla plain + main plain
+        # We track them separately so we can slot them in order
+        self._war_body_ids: list[int | None] = []
+        self._war_bangla_id: int | None = None
+        self._war_main_plain_id: int | None = None
         self._war_task: asyncio.Task | None = None
 
-   
+
     ###########################################################################
     ### LIFECYCLE
     ###########################################################################
@@ -106,7 +111,7 @@ class CocUtils(commands.Cog):
     @commands.command()
     async def clanstat(self, ctx: commands.Context):
         """Manually trigger a war status refresh."""
-        await self._fetch_and_post_war("2YP2PC8PJ")
+        await self._fetch_and_post_war()
         await ctx.tick()
 
     ###########################################################################
@@ -206,8 +211,8 @@ class CocUtils(commands.Cog):
     ### WAR — API
     ###########################################################################
 
-    async def _fetch_war_data(self, id: str) -> dict | None:
-        encoded = quote(id, safe="")
+    async def _fetch_war_data(self, clan_id: str) -> dict | None:
+        encoded = quote(clan_id, safe="")
         url = f"https://api.clashofclans.com/v1/clans/{encoded}/currentwar"
         headers = {
             "Authorization": f"Bearer {CLASH_APIKEY}",
@@ -295,11 +300,10 @@ class CocUtils(commands.Cog):
         except ValueError:
             return t
 
-    def _format_war(self, war: WarState) -> tuple[str, str]:
+    def _format_plain(self, war: WarState) -> str:
         our_stats = f"⭐{war.clan.stars}  {war.clan.attacks}  {war.clan.destruction:.1f}%"
         opp_stats = f"⭐{war.opponent.stars}  {war.opponent.attacks}  {war.opponent.destruction:.1f}%"
-
-        raw_footer = (
+        return (
             f"## **{war.clan.name}** vs **{war.opponent.name}**\n"
             f"### {our_stats}  |  {opp_stats}\n"
             f"# Prep: {self._fmt_discord_time(war.preparation_start, 'R')}"
@@ -307,6 +311,7 @@ class CocUtils(commands.Cog):
             f"  ---  End: {self._fmt_discord_time(war.end_time, 'f')} / {self._fmt_discord_time(war.end_time, 'R')}"
         )
 
+    def _format_body_chunks(self, war: WarState) -> list[str]:
         def fmt_attack(a: dict) -> str:
             stars = a.get("stars", 0)
             pct   = a.get("destructionPercentage", 0)
@@ -319,20 +324,6 @@ class CocUtils(commands.Cog):
                 f"\033[1;33m{m.name}\033[0m: {attacks_str}  |  {m.opponent_attacks}"
             )
 
-        body = "```ansi\n" + "\n".join(lines) + "\n```"
-
-        return body, raw_footer
-
-    def _chunk_war(self, war: WarState) -> list[str]:
-        ansi_body, raw_footer = self._format_war(war)
-
-        inner = ansi_body
-        if inner.startswith("```ansi\n"):
-            inner = inner[len("```ansi\n"):]
-        if inner.endswith("\n```"):
-            inner = inner[:-len("\n```")]
-
-        lines = inner.split("\n")
         chunks: list[str] = []
         current_lines: list[str] = []
         overhead = 8
@@ -347,66 +338,81 @@ class CocUtils(commands.Cog):
         if current_lines:
             chunks.append("```ansi\n" + "\n".join(current_lines) + "\n```")
 
-        # Raw footer is always the last message
-        chunks.append(raw_footer)
         return chunks
 
     ###########################################################################
     ### WAR — POSTING
     ###########################################################################
 
-    async def _fetch_and_post_war(self, id: str):
+    async def _edit_or_send(self, channel: discord.TextChannel | discord.Thread | discord.VoiceChannel, mid: int | None, content: str) -> int:
+        if mid is not None:
+            try:
+                msg = await channel.fetch_message(mid)
+                if msg.content != content:
+                    await msg.edit(content=content)
+                return msg.id
+            except discord.NotFound:
+                pass
+        msg = await channel.send(content)
+        return msg.id
+
+    async def _fetch_and_post_war(self):
         channel = self.bot.get_channel(ANNOUNCE_ID)
         if not isinstance(channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)):
             return
 
-        data = await self._fetch_war_data(id)
-        if data is None:
-            return
+        main_data   = await self._fetch_war_data(CLAN_ID)
+        bangla_data = await self._fetch_war_data(BANGLA_ID)
 
-        state = data.get("state", "")
-        if state in ("notInWar", "CLAN_NOT_FOUND", "ACCESS_DENIED"):
-            chunks = [f"Not currently in war (state: `{state}`)"]
-        else:
-            war = self._parse_war(data)
-            chunks = self._chunk_war(war)
+        # Build main body chunks
+        main_body_chunks: list[str] = []
+        main_plain: str | None = None
+        if main_data and main_data.get("state", "") not in ("notInWar", "CLAN_NOT_FOUND", "ACCESS_DENIED"):
+            main_war = self._parse_war(main_data)
+            main_body_chunks = self._format_body_chunks(main_war)
+            main_plain = self._format_plain(main_war)
+        elif main_data:
+            main_plain = f"Main clan not in war (state: `{main_data.get('state', 'unknown')}`)"
 
-        while len(self._war_message_ids) < len(chunks):
-            self._war_message_ids.append(None)
+        bangla_plain: str | None = None
+        if bangla_data and bangla_data.get("state", "") not in ("notInWar", "CLAN_NOT_FOUND", "ACCESS_DENIED"):
+            bangla_war = self._parse_war(bangla_data)
+            bangla_plain = self._format_plain(bangla_war)
+        elif bangla_data:
+            bangla_plain = f"Bangla clan not in war (state: `{bangla_data.get('state', 'unknown')}`)"
 
-        for i, content in enumerate(chunks):
-            msg = None
-            mid = self._war_message_ids[i]
-            if mid is not None:
-                try:
-                    msg = await channel.fetch_message(mid)
-                except discord.NotFound:
-                    self._war_message_ids[i] = None
+        # Reconcile body message ids
+        while len(self._war_body_ids) < len(main_body_chunks):
+            self._war_body_ids.append(None)
 
-            if msg is None:
-                msg = await channel.send(content)
-                self._war_message_ids[i] = msg.id
-            elif msg.content != content:
-                await msg.edit(content=content)
+        for i, content in enumerate(main_body_chunks):
+            mid = self._war_body_ids[i]
+            self._war_body_ids[i] = await self._edit_or_send(channel, mid, content)
 
-        for i in range(len(chunks), len(self._war_message_ids)):
-            mid = self._war_message_ids[i]
+        # Delete leftover body messages if chunk count shrank
+        for i in range(len(main_body_chunks), len(self._war_body_ids)):
+            mid = self._war_body_ids[i]
             if mid is not None:
                 try:
                     msg = await channel.fetch_message(mid)
                     await msg.delete()
                 except discord.NotFound:
                     pass
-                self._war_message_ids[i] = None
-        self._war_message_ids = self._war_message_ids[:len(chunks)]
+                self._war_body_ids[i] = None
+        self._war_body_ids = self._war_body_ids[:len(main_body_chunks)]
+
+        # Post bangla plain then main plain
+        if bangla_plain:
+            self._war_bangla_id = await self._edit_or_send(channel, self._war_bangla_id, bangla_plain)
+
+        if main_plain:
+            self._war_main_plain_id = await self._edit_or_send(channel, self._war_main_plain_id, main_plain)
 
     async def _war_loop(self):
         await self.bot.wait_until_ready()
         while not self.bot.is_closed():
             try:
-                await self._fetch_and_post_war(BANGLA_ID)
-                await self._fetch_and_post_war(CLAN_ID)
+                await self._fetch_and_post_war()
             except Exception as e:
                 print(f"[cocutils] war loop error: {e}")
             await asyncio.sleep(60)
-
