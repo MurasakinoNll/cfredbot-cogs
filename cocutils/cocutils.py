@@ -361,9 +361,9 @@ class CocUtils(commands.Cog):
 
         lines = []
         for m in war.clan.members:
-            attacks_str = "  ".join(fmt_attack(a) for a in m.attacks) if m.attacks else "no attacks"
+            attacks_str = "  ".join(fmt_attack(a) for a in m.attacks) if m.attacks else " - "
             lines.append(
-                f"\033[1;33m{m.name}\033[0m: {attacks_str}  ---  {m.opponent_attacks} attacks defended"
+                f"\033[1;33m{m.name}\033[0m4: {attacks_str}--- {m.opponent_attacks} defended"
             )
 
         return "```ansi\n" + "\n".join(lines) + "\n```"
