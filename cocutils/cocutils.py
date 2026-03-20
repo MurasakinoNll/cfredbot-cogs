@@ -113,7 +113,7 @@ class CocUtils(commands.Cog):
     def __init__(self, bot: Red):
         self.bot = bot
         self._message_ids: list[int | None] = [None, None]
-        self._war_message_id: int | None = None
+        self._war_message_id: list[int | None] = []
         self._war_task: asyncio.Task | None = None
 
     ############################# WAR PARSING ################################
@@ -303,6 +303,32 @@ class CocUtils(commands.Cog):
                     return None
                 return await resp.json()
 
+    def _chunk_war(self, war: WarState) -> list[str]:
+        full = self._format_war(war)
+
+        inner = full
+        if inner.startswith("```ansi\n"):
+            inner = inner[len("```ansi\n"):]
+        if inner.endswith("\n```"):
+            inner = inner[:-len("\n```")]
+
+        lines = inner.split("\n")
+        chunks = []
+        current_lines = []
+        overhead = 8
+
+        for line in lines:
+            if overhead + sum(len(l) + 1 for l in current_lines) + len(line) + 1 > 1990:
+                chunks.append("```ansi\n" + "\n".join(current_lines) + "\n```")
+                current_lines = [line]
+            else:
+                current_lines.append(line)
+
+        if current_lines:
+            chunks.append("```ansi\n" + "\n".join(current_lines) + "\n```")
+
+        return chunks
+
     async def _fetch_and_post_war(self):
         channel = self.bot.get_channel(ANNOUNCE_ID)
         if not isinstance(channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)):
@@ -314,28 +340,38 @@ class CocUtils(commands.Cog):
 
         state = data.get("state", "")
         if state in ("notInWar", "CLAN_NOT_FOUND", "ACCESS_DENIED"):
-            content = f"Not currently in war (state: `{state}`)"
+            chunks = [f"Not currently in war (state: `{state}`)"]
         else:
             war = self._parse_war(data)
-            content = self._format_war(war)  # you define the format
+            chunks = self._chunk_war(war)
 
-        # Chunk if needed — persistent single msg per chunk
-        chunks = [content[i:i+1990] for i in range(0, len(content), 1990)]
+        while len(self._war_message_ids) < len(chunks):
+            self._war_message_ids.append(None)
 
-        # For now just handle single message (extend to list if needed)
-        msg = None
-        if self._war_message_id:
-            try:
-                msg = await channel.fetch_message(self._war_message_id)
-            except discord.NotFound:
-                self._war_message_id = None
+        for i, content in enumerate(chunks):
+            msg = None
+            if self._war_message_ids[i]:
+                try:
+                    msg = await channel.fetch_message(self._war_message_ids[i])
+                except discord.NotFound:
+                    self._war_message_ids[i] = None
 
-        if msg is None:
-            msg = await channel.send(chunks[0])
-            self._war_message_id = msg.id
-        elif msg.content != chunks[0]:
-            await msg.edit(content=chunks[0])
-    
+            if msg is None:
+                msg = await channel.send(content)
+                self._war_message_ids[i] = msg.id
+            elif msg.content != content:
+                await msg.edit(content=content)
+
+        for i in range(len(chunks), len(self._war_message_ids)):
+            if self._war_message_ids[i]:
+                try:
+                    msg = await channel.fetch_message(self._war_message_ids[i])
+                    await msg.delete()
+                except discord.NotFound:
+                    pass
+                self._war_message_ids[i] = None
+        self._war_message_ids = self._war_message_ids[:len(chunks)]
+
     def _format_war(self, war: WarState) -> str:
             # -- name header --
         our  = war.clan.name
