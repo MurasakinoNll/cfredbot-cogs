@@ -16,8 +16,7 @@ ROLE_IDS = [
 ]
 
 CLAN_ID = "#2YUYR2LPV"
-CLASH_APIKEY = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiIsImtpZCI6IjI4YTMxOGY3LTAwMDAtYTFlYi03ZmExLTJjNzQzM2M2Y2NhNSJ9.eyJpc3MiOiJzdXBlcmNlbGwiLCJhdWQiOiJzdXBlcmNlbGw6Z2FtZWFwaSIsImp0aSI6Ijc4ODcxNTk3LTgxZDQtNDEzMS1hNTVmLWZkMjljMTE0NDM0ZiIsImlhdCI6MTc3Mzk2NzE5OSwic3ViIjoiZGV2ZWxvcGVyLzZjOGMxYmRjLWI3ODQtMjA5Ny0wOGQ5LTdiMWEzYTM2Y2Y2MCIsInNjb3BlcyI6WyJjbGFzaCJdLCJsaW1pdHMiOlt7InRpZXIiOiJkZXZlbG9wZXIvc2lsdmVyIiwidHlwZSI6InRocm90dGxpbmcifSx7ImNpZHJzIjpbIjE3Ni4yOC4xNDkuMjUyIl0sInR5cGUiOiJjbGllbnQifV19.JQmdedEYUKHwYyiHPlEXxSyplf8MyCx6dgk4QFJuRs3TrroFLYoXAICNPVsyaupmaioKSUra8sfOTwUPToyXdA"
-
+CLASH_APIKEY = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiIsImtpZCI6IjI4YTMxOGY3LTAwMDAtYTFlYi03ZmExLTJjNzQzM2M2Y2NhNSJ9.eyJpc3MiOiJzdXBlcmNlbGwiLCJhdWQiOiJzdXBlcmNlbGw6Z2FtZWFwaSIsImp0aSI6Ijg2N2E4N2Q4LTRiZGYtNDI3NC1hOWUyLWNjNDFkODNiZGVmMiIsImlhdCI6MTc3Mzk2OTE1MSwic3ViIjoiZGV2ZWxvcGVyLzZjOGMxYmRjLWI3ODQtMjA5Ny0wOGQ5LTdiMWEzYTM2Y2Y2MCIsInNjb3BlcyI6WyJjbGFzaCJdLCJsaW1pdHMiOlt7InRpZXIiOiJkZXZlbG9wZXIvc2lsdmVyIiwidHlwZSI6InRocm90dGxpbmcifSx7ImNpZHJzIjpbIjE3Ni4yOC4xNDkuMjUyIiwiNS45NS4yNTAuNzEiXSwidHlwZSI6ImNsaWVudCJ9XX0.4A7gfJGrghRbetI6bFN1A8rJE9GOex2hV45oSv0xNJekKup4AEmnaa5rjfN0rjociaoXXH2qTDEc-wbbn4GPAQ"
 class CocUtils(commands.Cog):
     """Displays and auto-updates a list of members with specific roles."""
 
@@ -175,9 +174,9 @@ class CocUtils(commands.Cog):
         header = {"Authorization": f"Bearer {CLASH_APIKEY}"}
 
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=header) as response:
+            async with session.get(url, headers=header, ssl=False) as response:
                 if response.status != 200:
-                    await ctx.send(f"coc api shat itself: {response.status}. \n\nDEBUG {encodedurlid}  \nuri:{url} \nheader:{header}")
+                    await ctx.send(f"coc api shat itself: {response.status}. \n\n```DEBUG {encodedurlid}```  \n```uri:{url}``` \n```header:{header}``` \n \n ```resp: {response}```")
                     return
                 data = await response.json()
 
