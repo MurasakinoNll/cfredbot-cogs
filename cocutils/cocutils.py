@@ -417,8 +417,6 @@ class CocUtils(commands.Cog):
             f"{members_block}\n"
             f"```"
         )
-        # ---- define your format here ----
-        return f"war state: {war.state}\n[format TBD]"
 
     async def _war_loop(self):
         await self.bot.wait_until_ready()
@@ -434,23 +432,3 @@ class CocUtils(commands.Cog):
     async def clanstat(self, ctx: commands.Context):
         await self._fetch_and_post_war()
         await ctx.tick()
-        # encodedurlid = quote(CLAN_ID, safe="")
-        # url = f"https://api.clashofclans.com/v1/clans/{encodedurlid}/currentwar"
-        # header = {"Authorization": f"Bearer {CLASH_APIKEY}"}
-        #
-        # async with aiohttp.ClientSession() as session:
-        #     async with session.get(url, headers=header, ssl=False) as response:
-        #         if response.status != 200:
-        #             await ctx.send(f"coc api shat itself: {response.status}. \n\n```DEBUG {encodedurlid}```  \n```uri:{url}``` \n```header:{header}``` \n \n ```resp: {response}```")
-        #             return
-        #         data = await response.json()
-        #
-        # out = json.dumps(data, indent=2)
-        # announcechannel = self.bot.get_channel(ANNOUNCE_ID)
-        # if not isinstance(announcechannel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)):
-        #     await ctx.send("announce channel not found.")
-        #     return
-        # chunk_size = 1690
-        # chunks = [out[i:i+chunk_size] for i in range(0, len(out), chunk_size)]
-        # for chunk in chunks:
-        #     await announcechannel.send(f"```json\n{chunk}\n```")
