@@ -177,7 +177,7 @@ class CocUtils(commands.Cog):
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=header) as response:
                 if response.status != 200:
-                    await ctx.send(f"coc api shat itself: {response.status}")
+                    await ctx.send(f"coc api shat itself: {response.status}. \n\nDEBUG {encodedurlid}  \nuri:{url} \nheader:{header}")
                     return
                 data = await response.json()
 
