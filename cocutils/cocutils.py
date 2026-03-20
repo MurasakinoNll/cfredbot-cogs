@@ -113,7 +113,7 @@ class CocUtils(commands.Cog):
     def __init__(self, bot: Red):
         self.bot = bot
         self._message_ids: list[int | None] = [None, None]
-        self._war_message_id: list[int | None] = []
+        self._war_message_ids: list[int | None] = []
         self._war_task: asyncio.Task | None = None
 
     ############################# WAR PARSING ################################
@@ -350,9 +350,10 @@ class CocUtils(commands.Cog):
 
         for i, content in enumerate(chunks):
             msg = None
-            if self._war_message_ids[i]:
+            mid = self._war_message_ids[i]
+            if mid is not None:
                 try:
-                    msg = await channel.fetch_message(self._war_message_ids[i])
+                    msg = await channel.fetch_message(mid)
                 except discord.NotFound:
                     self._war_message_ids[i] = None
 
@@ -363,15 +364,15 @@ class CocUtils(commands.Cog):
                 await msg.edit(content=content)
 
         for i in range(len(chunks), len(self._war_message_ids)):
-            if self._war_message_ids[i]:
+            mid = self._war_message_ids[i]
+            if mid is not None:
                 try:
-                    msg = await channel.fetch_message(self._war_message_ids[i])
+                    msg = await channel.fetch_message(mid)
                     await msg.delete()
                 except discord.NotFound:
                     pass
                 self._war_message_ids[i] = None
         self._war_message_ids = self._war_message_ids[:len(chunks)]
-
     def _format_war(self, war: WarState) -> str:
             # -- name header --
         our  = war.clan.name
