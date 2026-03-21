@@ -386,7 +386,7 @@ class CocUtils(commands.Cog):
             f"## Prep: {self._fmt_discord_time(war.preparation_start, 'R')}"
             f"  ---  Start: {self._fmt_discord_time(war.start_time, 'R')}"
             f"  ---  End: {self._fmt_discord_time(war.end_time, 'f')} / {self._fmt_discord_time(war.end_time, 'R')}"
-            f"# {queue_line}"
+            f"# {queue_line}\n"
             "------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n"
         )
 
@@ -600,3 +600,14 @@ class CocUtils(commands.Cog):
                 f"\n  notified flags: `{[k for k in self._notified if k.startswith(clan_id)]}`"
             )
         await ctx.send("\n".join(lines))
+
+    @commands.is_owner()
+    @commands.command()
+    async def clockrm(self, ctx: commands.Context):
+        """Clear all active war clocks and cached message IDs."""
+        self._war_clocks.clear()
+        self._notified.clear()
+        self._war_body_id = None
+        self._war_bangla_id = None
+        self._war_main_plain_id = None
+        await ctx.tick()
