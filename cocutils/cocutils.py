@@ -143,14 +143,12 @@ class CocUtils(commands.Cog):
     @commands.is_owner()
     @commands.command()
     async def refresh_roles(self, ctx: commands.Context):
-        """Manually trigger a role-list refresh."""
         await self._refresh()
         await ctx.tick()
 
     @commands.is_owner()
     @commands.command()
     async def clanstat(self, ctx: commands.Context):
-        """Manually trigger a war status refresh."""
         await self._fetch_and_post_war()
         await ctx.tick()
 
@@ -359,15 +357,17 @@ class CocUtils(commands.Cog):
             pct   = a.get("destructionPercentage", 0)
             return f"{stars}⭐ {pct}%"
 
+        max_len = max((len(m.name) for m in war.clan.members), default=0)
+
         lines = []
         for m in war.clan.members:
             attacks_str = "  ".join(fmt_attack(a) for a in m.attacks) if m.attacks else " - "
+            pad = max_len - len(m.name)
             lines.append(
-                f"\033[1;33m{m.name}\033[0m4: {attacks_str}--- {m.opponent_attacks} defended"
+                f"\033[1;33m{m.name}\033[0m{' ' * pad}: {attacks_str}---{m.opponent_attacks} defended"
             )
 
         return "```ansi\n" + "\n".join(lines) + "\n```"
-
     ###########################################################################
     ### WAR CLOCK — LOOP
     ###########################################################################
