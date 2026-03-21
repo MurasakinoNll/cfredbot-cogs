@@ -70,7 +70,7 @@ class WarClock:
     @classmethod
     def from_war(cls, war: WarState) -> "WarClock":
         def p(t: str) -> datetime:
-            return datetime.strptime(t, "%Y%m%dT%H%M%S.%fZ")
+            return datetime.strptime(t, "%Y%m%dT%H%M%S.%fZ").replace(tzinfo=None)
 
         war_end      = p(war.end_time)
         queue_start  = war_end + timedelta(hours=1)
@@ -487,7 +487,7 @@ class CocUtils(commands.Cog):
     @commands.is_owner()
     @commands.command()
     async def wardbg(self, ctx: commands.Context):
-        now = datetime.now(UTC)
+        now = datetime.now(UTC).replace(tzinfo=None)
         lines = [f"UTC now: `{now.strftime('%Y-%m-%d %H:%M:%S')}`"]
         if not self._war_clocks:
             lines.append("No war clocks loaded.")
