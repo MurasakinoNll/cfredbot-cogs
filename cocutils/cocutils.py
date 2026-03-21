@@ -375,15 +375,19 @@ class CocUtils(commands.Cog):
         )
         opp_stats = f"⭐{war.opponent.stars}  {war.opponent.attacks}  {war.opponent.destruction:.1f}%"
         queue_line = (
-            f"\nNext queue: {clock.next_queue_str()}" if clock is not None else ""
+            f"\nNext war starting in {clock.next_queue_str()}"
+            if clock is not None
+            else ""
         )
         return (
-            f"## **{war.clan.name}** vs **{war.opponent.name}**\n"
-            f"### {our_stats}  |  {opp_stats}\n"
-            f"# Prep: {self._fmt_discord_time(war.preparation_start, 'R')}"
+            "------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------"
+            f" **{war.clan.name}** vs **{war.opponent.name}**\n"
+            f" **{our_stats}  |  {opp_stats}**\n"
+            f"## Prep: {self._fmt_discord_time(war.preparation_start, 'R')}"
             f"  ---  Start: {self._fmt_discord_time(war.start_time, 'R')}"
             f"  ---  End: {self._fmt_discord_time(war.end_time, 'f')} / {self._fmt_discord_time(war.end_time, 'R')}"
-            f"{queue_line}"
+            f"# {queue_line}"
+            "------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n"
         )
 
     def _format_body(self, war: WarState) -> str:
@@ -401,7 +405,7 @@ class CocUtils(commands.Cog):
             )
             pad = max_len - len(m.name)
             lines.append(
-                f"\033[1;33m{m.name}\033[0m{' ' * pad}: {attacks_str} --- {m.opponent_attacks} defended"
+                f"\033[1;36m{m.name}\033[0m{' ' * pad}: {attacks_str} {' ' * pad}--- {m.opponent_attacks} defended"
             )
 
         return "```ansi\n" + "\n".join(lines) + "\n```"
