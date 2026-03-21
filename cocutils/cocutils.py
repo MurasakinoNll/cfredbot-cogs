@@ -121,6 +121,35 @@ class CocUtils(commands.Cog):
         self._war_clocks: dict[str, WarClock] = {}
         self._clock_task: asyncio.Task | None = None
         self._notified: set[str] = set()
+        self._load_state()
+
+    ###########################################################################
+    ### STATE PERSISTENCE
+    ###########################################################################
+
+    def _state_path(self) -> str:
+        return os.path.join(os.path.dirname(__file__), "state.json")
+
+    def _load_state(self):
+        try:
+            with open(self._state_path(), "r", encoding="utf-8") as f:
+                data = json.load(f)
+                self._message_ids = data.get("message_ids", [None, None])
+                self._war_body_id = data.get("war_body_id")
+                self._war_bangla_id = data.get("war_bangla_id")
+                self._war_main_plain_id = data.get("war_main_plain_id")
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+
+    def _save_state(self):
+        data = {
+            "message_ids": self._message_ids,
+            "war_body_id": self._war_body_id,
+            "war_bangla_id": self._war_bangla_id,
+            "war_main_plain_id": self._war_main_plain_id,
+        }
+        with open(self._state_path(), "w", encoding="utf-8") as f:
+            json.dump(data, f)
 
     ###########################################################################
     ### LIFECYCLE
@@ -156,6 +185,39 @@ class CocUtils(commands.Cog):
     async def clanstat(self, ctx: commands.Context):
         await self._fetch_and_post_war()
         await ctx.tick()
+
+    @commands.is_owner()
+    @commands.command()
+    async def clockrm(self, ctx: commands.Context):
+        """Clear all active war clocks, notification flags, and cached message IDs."""
+        self._war_clocks.clear()
+        self._notified.clear()
+        self._war_body_id = None
+        self._war_bangla_id = None
+        self._war_main_plain_id = None
+        self._save_state()
+        await ctx.tick()
+
+    @commands.is_owner()
+    @commands.command()
+    async def wardbg(self, ctx: commands.Context):
+        now = datetime.now(UTC).replace(tzinfo=None)
+        lines = [f"UTC now: `{now.strftime('%Y-%m-%d %H:%M:%S')}`"]
+        if not self._war_clocks:
+            lines.append("No war clocks loaded.")
+        for clan_id, clock in self._war_clocks.items():
+            phase = clock.current_phase(now)
+            secs_to_queue = (clock.queue_start - now).total_seconds()
+            secs_to_end = (clock.war_end - now).total_seconds()
+            lines.append(
+                f"\n**{clan_id}**"
+                f"\n  phase: `{phase}`"
+                f"\n  war ends in: `{secs_to_end:.0f}s` ({secs_to_end / 3600:.2f}h)"
+                f"\n  queue opens in: `{secs_to_queue:.0f}s` ({secs_to_queue / 3600:.2f}h)"
+                f"\n  queue at: `{clock.queue_start.strftime('%Y-%m-%d %H:%M:%S')} UTC`"
+                f"\n  notified flags: `{[k for k in self._notified if k.startswith(clan_id)]}`"
+            )
+        await ctx.send("\n".join(lines))
 
     ###########################################################################
     ### ROLE LIST
@@ -269,6 +331,7 @@ class CocUtils(commands.Cog):
             if msg is None:
                 msg = await channel.send(content)
                 self._message_ids[i] = msg.id
+                self._save_state()
             elif msg.content != content:
                 await msg.edit(content=content)
 
@@ -397,6 +460,15 @@ class CocUtils(commands.Cog):
             return f"{stars}⭐ {pct}%"
 
         max_len = max((len(m.name) for m in war.clan.members), default=0)
+        atk_max = max(
+            (
+                len("  ".join(fmt_attack(a) for a in m.attacks))
+                if m.attacks
+                else len(" - ")
+                for m in war.clan.members
+            ),
+            default=0,
+        )
 
         lines = []
         for m in war.clan.members:
@@ -404,8 +476,9 @@ class CocUtils(commands.Cog):
                 "  ".join(fmt_attack(a) for a in m.attacks) if m.attacks else " - "
             )
             pad = max_len - len(m.name)
+            atk_pad = atk_max - len(attacks_str)
             lines.append(
-                f"\033[1;36m{m.name}\033[0m{' ' * pad}: {attacks_str} {' ' * pad}--- {m.opponent_attacks} defended"
+                f"\033[1;36m{m.name}\033[0m{' ' * pad}: {attacks_str}{' ' * atk_pad} --- {m.opponent_attacks} defended"
             )
 
         return "```ansi\n" + "\n".join(lines) + "\n```"
@@ -424,7 +497,7 @@ class CocUtils(commands.Cog):
             await asyncio.sleep(60)
 
     async def _tick_clock(self):
-        now = datetime.now(UTC)
+        now = datetime.now(UTC).replace(tzinfo=None)
         for clan_id, clock in self._war_clocks.items():
             phase = clock.current_phase(now)
 
@@ -490,7 +563,6 @@ class CocUtils(commands.Cog):
         channel: discord.TextChannel | discord.Thread | discord.VoiceChannel,
         marker: str,
     ) -> int | None:
-        """Scan recent channel history for a message we sent containing a marker string."""
         async for msg in channel.history(limit=50):
             if msg.author == self.bot.user and marker in msg.content:
                 return msg.id
@@ -560,16 +632,19 @@ class CocUtils(commands.Cog):
             self._war_body_id = await self._edit_or_send(
                 channel, self._war_body_id, main_body, "```ansi"
             )
+            self._save_state()
 
         if bangla_plain:
             self._war_bangla_id = await self._edit_or_send(
                 channel, self._war_bangla_id, bangla_plain, BANGLA_ID
             )
+            self._save_state()
 
         if main_plain:
             self._war_main_plain_id = await self._edit_or_send(
                 channel, self._war_main_plain_id, main_plain, CLAN_ID
             )
+            self._save_state()
 
     async def _war_loop(self):
         await self.bot.wait_until_ready()
@@ -579,35 +654,3 @@ class CocUtils(commands.Cog):
             except Exception as e:
                 print(f"[cocutils] war loop error: {e}")
             await asyncio.sleep(60)
-
-    @commands.is_owner()
-    @commands.command()
-    async def wardbg(self, ctx: commands.Context):
-        now = datetime.now(UTC).replace(tzinfo=None)
-        lines = [f"UTC now: `{now.strftime('%Y-%m-%d %H:%M:%S')}`"]
-        if not self._war_clocks:
-            lines.append("No war clocks loaded.")
-        for clan_id, clock in self._war_clocks.items():
-            phase = clock.current_phase(now)
-            secs_to_queue = (clock.queue_start - now).total_seconds()
-            secs_to_end = (clock.war_end - now).total_seconds()
-            lines.append(
-                f"\n**{clan_id}**"
-                f"\n  phase: `{phase}`"
-                f"\n  war ends in: `{secs_to_end:.0f}s` ({secs_to_end / 3600:.2f}h)"
-                f"\n  queue opens in: `{secs_to_queue:.0f}s` ({secs_to_queue / 3600:.2f}h)"
-                f"\n  queue at: `{clock.queue_start.strftime('%Y-%m-%d %H:%M:%S')} UTC`"
-                f"\n  notified flags: `{[k for k in self._notified if k.startswith(clan_id)]}`"
-            )
-        await ctx.send("\n".join(lines))
-
-    @commands.is_owner()
-    @commands.command()
-    async def clockrm(self, ctx: commands.Context):
-        """Clear all active war clocks and cached message IDs."""
-        self._war_clocks.clear()
-        self._notified.clear()
-        self._war_body_id = None
-        self._war_bangla_id = None
-        self._war_main_plain_id = None
-        await ctx.tick()
