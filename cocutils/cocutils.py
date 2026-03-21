@@ -28,6 +28,7 @@ CLASH_APIKEY = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiIsImtpZCI6IjI4YTMxOGY3LTAwMDAt
 ### DATACLASSES
 ###############################################################################
 
+
 @dataclass
 class WarMember:
     tag: str
@@ -37,6 +38,7 @@ class WarMember:
     opponent_attacks: int
     attacks: list[dict] = field(default_factory=list)
     best_opponent_attack: dict | None = None
+
 
 @dataclass
 class WarClan:
@@ -48,6 +50,7 @@ class WarClan:
     destruction: float
     members: list[WarMember]
 
+
 @dataclass
 class WarState:
     state: str
@@ -58,6 +61,7 @@ class WarState:
     end_time: str
     clan: WarClan
     opponent: WarClan
+
 
 @dataclass
 class WarClock:
@@ -72,15 +76,15 @@ class WarClock:
         def p(t: str) -> datetime:
             return datetime.strptime(t, "%Y%m%dT%H%M%S.%fZ").replace(tzinfo=None)
 
-        war_end      = p(war.end_time)
-        queue_start  = war_end + timedelta(hours=1)
-        next_prep    = queue_start + timedelta(hours=1)
+        war_end = p(war.end_time)
+        queue_start = war_end + timedelta(hours=1)
+        next_prep = queue_start + timedelta(hours=1)
         return cls(
-            prep_start      = p(war.preparation_start),
-            war_start       = p(war.start_time),
-            war_end         = war_end,
-            queue_start     = queue_start,
-            next_prep_start = next_prep,
+            prep_start=p(war.preparation_start),
+            war_start=p(war.start_time),
+            war_end=war_end,
+            queue_start=queue_start,
+            next_prep_start=next_prep,
         )
 
     def current_phase(self, now: datetime) -> str:
@@ -102,6 +106,7 @@ class WarClock:
 ###############################################################################
 ### COG
 ###############################################################################
+
 
 class CocUtils(commands.Cog):
     """Displays and auto-updates a list of members with specific roles."""
@@ -164,7 +169,9 @@ class CocUtils(commands.Cog):
         except (FileNotFoundError, json.JSONDecodeError):
             return {}
 
-    def _get_role_members(self, guild: discord.Guild, role_id: int) -> list[discord.Member]:
+    def _get_role_members(
+        self, guild: discord.Guild, role_id: int
+    ) -> list[discord.Member]:
         role = guild.get_role(role_id)
         if role is None:
             return []
@@ -177,15 +184,27 @@ class CocUtils(commands.Cog):
         clean = text.replace("\u202a", "").replace("\u202c", "")
         return len(clean)
 
-    def _build_block(self, guild: discord.Guild, members: list[discord.Member], role_id: int | None, color: str, max_len: int, altnames: dict[str, str]) -> str:
-        header = f"<@&{role_id}>" if role_id else "<@&1483520189902356641> and <@&1483519620018077918>"
+    def _build_block(
+        self,
+        guild: discord.Guild,
+        members: list[discord.Member],
+        role_id: int | None,
+        color: str,
+        max_len: int,
+        altnames: dict[str, str],
+    ) -> str:
+        header = (
+            f"<@&{role_id}>"
+            if role_id
+            else "<@&1483520189902356641> and <@&1483519620018077918>"
+        )
         if not members:
             return f"**{header}:**\n```ansi\nNo members\n```"
 
         lines = []
         for m in members:
             name = self._safe_name(m.display_name)
-            emoji_count = sum(1 for char in name if unicodedata.category(char) == 'So')
+            emoji_count = sum(1 for char in name if unicodedata.category(char) == "So")
             pad = max_len - self._display_width(name) - emoji_count
             alt = altnames.get(str(m.id), "unknown IGN")
             lines.append(
@@ -195,7 +214,9 @@ class CocUtils(commands.Cog):
         member_list = "\n".join(lines)
         return f"**{header}:**\n```ansi\n{member_list}\n```"
 
-    def _build_contents(self, guild: discord.Guild, altnames: dict[str, str]) -> tuple[str, str]:
+    def _build_contents(
+        self, guild: discord.Guild, altnames: dict[str, str]
+    ) -> tuple[str, str]:
         members1 = self._get_role_members(guild, ROLE_IDS[0])
         members2 = self._get_role_members(guild, ROLE_IDS[1])
         members3 = self._get_role_members(guild, ROLE_IDS[2])
@@ -208,13 +229,19 @@ class CocUtils(commands.Cog):
         all_members = members1 + members2 + members3 + members4
         max_len = max(
             (self._display_width(self._safe_name(m.display_name)) for m in all_members),
-            default=0
+            default=0,
         )
 
-        block1 = self._build_block(guild, members1, ROLE_IDS[0], "1;33", max_len, altnames)
-        block2 = self._build_block(guild, members2, ROLE_IDS[1], "1;34", max_len, altnames)
-        block3 = self._build_block(guild, members3, ROLE_IDS[2], "1;31", max_len, altnames)
-        block4 = self._build_block(guild, members4, None,        "1;36", max_len, altnames)
+        block1 = self._build_block(
+            guild, members1, ROLE_IDS[0], "1;33", max_len, altnames
+        )
+        block2 = self._build_block(
+            guild, members2, ROLE_IDS[1], "1;34", max_len, altnames
+        )
+        block3 = self._build_block(
+            guild, members3, ROLE_IDS[2], "1;31", max_len, altnames
+        )
+        block4 = self._build_block(guild, members4, None, "1;36", max_len, altnames)
 
         content1 = f"{block1}\n{block2}"
         content2 = f"\n{block3}\n{block4}"
@@ -272,15 +299,17 @@ class CocUtils(commands.Cog):
         def parse_members_full(members_data: list) -> list[WarMember]:
             result = []
             for m in members_data:
-                result.append(WarMember(
-                    tag=m.get("tag", ""),
-                    name=m.get("name", ""),
-                    townhall_level=m.get("townhallLevel", 0),
-                    map_position=m.get("mapPosition", 0),
-                    opponent_attacks=m.get("opponentAttacks", 0),
-                    attacks=m.get("attacks", []),
-                    best_opponent_attack=m.get("bestOpponentAttack"),
-                ))
+                result.append(
+                    WarMember(
+                        tag=m.get("tag", ""),
+                        name=m.get("name", ""),
+                        townhall_level=m.get("townhallLevel", 0),
+                        map_position=m.get("mapPosition", 0),
+                        opponent_attacks=m.get("opponentAttacks", 0),
+                        attacks=m.get("attacks", []),
+                        best_opponent_attack=m.get("bestOpponentAttack"),
+                    )
+                )
             return sorted(result, key=lambda m: m.map_position)
 
         def parse_clan_full(c: dict) -> WarClan:
@@ -303,7 +332,9 @@ class CocUtils(commands.Cog):
                     map_position=m.get("mapPosition", 0),
                     opponent_attacks=0,
                 )
-                for m in sorted(c.get("members", []), key=lambda m: m.get("mapPosition", 0))
+                for m in sorted(
+                    c.get("members", []), key=lambda m: m.get("mapPosition", 0)
+                )
             ]
             return WarClan(
                 tag=c.get("tag", ""),
@@ -339,9 +370,13 @@ class CocUtils(commands.Cog):
             return t
 
     def _format_plain(self, war: WarState, clock: WarClock | None = None) -> str:
-        our_stats = f"⭐{war.clan.stars}  {war.clan.attacks}  {war.clan.destruction:.1f}%"
+        our_stats = (
+            f"⭐{war.clan.stars}  {war.clan.attacks}  {war.clan.destruction:.1f}%"
+        )
         opp_stats = f"⭐{war.opponent.stars}  {war.opponent.attacks}  {war.opponent.destruction:.1f}%"
-        queue_line = f"\nNext queue: {clock.next_queue_str()}" if clock is not None else ""
+        queue_line = (
+            f"\nNext queue: {clock.next_queue_str()}" if clock is not None else ""
+        )
         return (
             f"## **{war.clan.name}** vs **{war.opponent.name}**\n"
             f"### {our_stats}  |  {opp_stats}\n"
@@ -354,20 +389,23 @@ class CocUtils(commands.Cog):
     def _format_body(self, war: WarState) -> str:
         def fmt_attack(a: dict) -> str:
             stars = a.get("stars", 0)
-            pct   = a.get("destructionPercentage", 0)
+            pct = a.get("destructionPercentage", 0)
             return f"{stars}⭐ {pct}%"
 
         max_len = max((len(m.name) for m in war.clan.members), default=0)
 
         lines = []
         for m in war.clan.members:
-            attacks_str = "  ".join(fmt_attack(a) for a in m.attacks) if m.attacks else " - "
+            attacks_str = (
+                "  ".join(fmt_attack(a) for a in m.attacks) if m.attacks else " - "
+            )
             pad = max_len - len(m.name)
             lines.append(
-                f"\033[1;33m{m.name}\033[0m{' ' * pad}: {attacks_str}---{m.opponent_attacks} defended"
+                f"\033[1;33m{m.name}\033[0m{' ' * pad}: {attacks_str} --- {m.opponent_attacks} defended"
             )
 
         return "```ansi\n" + "\n".join(lines) + "\n```"
+
     ###########################################################################
     ### WAR CLOCK — LOOP
     ###########################################################################
@@ -387,20 +425,34 @@ class CocUtils(commands.Cog):
             phase = clock.current_phase(now)
 
             if phase == "preparation" and f"{clan_id}:reset" not in self._notified:
-                self._notified = {k for k in self._notified if not k.startswith(clan_id)}
+                self._notified = {
+                    k for k in self._notified if not k.startswith(clan_id)
+                }
                 self._notified.add(f"{clan_id}:reset")
 
             secs_to_queue = (clock.queue_start - now).total_seconds()
 
-            if phase in ("cooldown", "war") and secs_to_queue <= 3600 and f"{clan_id}:1h" not in self._notified:
+            if (
+                phase in ("cooldown", "war")
+                and secs_to_queue <= 3600
+                and f"{clan_id}:1h" not in self._notified
+            ):
                 self._notified.add(f"{clan_id}:1h")
                 await self._on_queue_approaching("1h", clock)
 
-            if phase in ("cooldown", "war") and secs_to_queue <= 1800 and f"{clan_id}:30m" not in self._notified:
+            if (
+                phase in ("cooldown", "war")
+                and secs_to_queue <= 1800
+                and f"{clan_id}:30m" not in self._notified
+            ):
                 self._notified.add(f"{clan_id}:30m")
                 await self._on_queue_approaching("30m", clock)
 
-            if phase in ("cooldown", "war") and secs_to_queue <= 300 and f"{clan_id}:5m" not in self._notified:
+            if (
+                phase in ("cooldown", "war")
+                and secs_to_queue <= 300
+                and f"{clan_id}:5m" not in self._notified
+            ):
                 self._notified.add(f"{clan_id}:5m")
                 await self._on_queue_approaching("5m", clock)
 
@@ -411,6 +463,7 @@ class CocUtils(commands.Cog):
             if phase == "ended" and f"{clan_id}:war_end" not in self._notified:
                 self._notified.add(f"{clan_id}:war_end")
                 await self._on_war_end(clock)
+
     ###########################################################################
     ### WAR CLOCK — EVENT HOOKS
     ###########################################################################
@@ -428,7 +481,27 @@ class CocUtils(commands.Cog):
     ### WAR — POSTING
     ###########################################################################
 
-    async def _edit_or_send(self, channel: discord.TextChannel | discord.Thread | discord.VoiceChannel, mid: int | None, content: str) -> int:
+    async def _find_existing(
+        self,
+        channel: discord.TextChannel | discord.Thread | discord.VoiceChannel,
+        marker: str,
+    ) -> int | None:
+        """Scan recent channel history for a message we sent containing a marker string."""
+        async for msg in channel.history(limit=50):
+            if msg.author == self.bot.user and marker in msg.content:
+                return msg.id
+        return None
+
+    async def _edit_or_send(
+        self,
+        channel: discord.TextChannel | discord.Thread | discord.VoiceChannel,
+        mid: int | None,
+        content: str,
+        marker: str,
+    ) -> int:
+        if mid is None:
+            mid = await self._find_existing(channel, marker)
+
         if mid is not None:
             try:
                 msg = await channel.fetch_message(mid)
@@ -437,43 +510,62 @@ class CocUtils(commands.Cog):
                 return msg.id
             except discord.NotFound:
                 pass
+
         msg = await channel.send(content)
         return msg.id
 
     async def _fetch_and_post_war(self):
         channel = self.bot.get_channel(ANNOUNCE_ID)
-        if not isinstance(channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)):
+        if not isinstance(
+            channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)
+        ):
             return
 
-        main_data   = await self._fetch_war_data(CLAN_ID)
+        main_data = await self._fetch_war_data(CLAN_ID)
         bangla_data = await self._fetch_war_data(BANGLA_ID)
 
         main_body: str | None = None
         main_plain: str | None = None
-        if main_data and main_data.get("state", "") not in ("notInWar", "CLAN_NOT_FOUND", "ACCESS_DENIED"):
-            main_war        = self._parse_war(main_data)
+        if main_data and main_data.get("state", "") not in (
+            "notInWar",
+            "CLAN_NOT_FOUND",
+            "ACCESS_DENIED",
+        ):
+            main_war = self._parse_war(main_data)
             self._war_clocks[CLAN_ID] = WarClock.from_war(main_war)
-            main_body       = self._format_body(main_war)
+            main_body = self._format_body(main_war)
             main_plain = self._format_plain(main_war, self._war_clocks[CLAN_ID])
         elif main_data:
-            main_plain = f"Main clan not in war (state: `{main_data.get('state', 'unknown')}`)"
+            main_plain = (
+                f"Main clan not in war (state: `{main_data.get('state', 'unknown')}`)"
+            )
 
         bangla_plain: str | None = None
-        if bangla_data and bangla_data.get("state", "") not in ("notInWar", "CLAN_NOT_FOUND", "ACCESS_DENIED"):
-            bangla_war   = self._parse_war(bangla_data)
+        if bangla_data and bangla_data.get("state", "") not in (
+            "notInWar",
+            "CLAN_NOT_FOUND",
+            "ACCESS_DENIED",
+        ):
+            bangla_war = self._parse_war(bangla_data)
             self._war_clocks[BANGLA_ID] = WarClock.from_war(bangla_war)
             bangla_plain = self._format_plain(bangla_war, self._war_clocks[BANGLA_ID])
         elif bangla_data:
             bangla_plain = f"Bangla clan not in war (state: `{bangla_data.get('state', 'unknown')}`)"
 
         if main_body:
-            self._war_body_id = await self._edit_or_send(channel, self._war_body_id, main_body)
+            self._war_body_id = await self._edit_or_send(
+                channel, self._war_body_id, main_body, "```ansi"
+            )
 
         if bangla_plain:
-            self._war_bangla_id = await self._edit_or_send(channel, self._war_bangla_id, bangla_plain)
+            self._war_bangla_id = await self._edit_or_send(
+                channel, self._war_bangla_id, bangla_plain, BANGLA_ID
+            )
 
         if main_plain:
-            self._war_main_plain_id = await self._edit_or_send(channel, self._war_main_plain_id, main_plain)
+            self._war_main_plain_id = await self._edit_or_send(
+                channel, self._war_main_plain_id, main_plain, CLAN_ID
+            )
 
     async def _war_loop(self):
         await self.bot.wait_until_ready()
@@ -494,12 +586,12 @@ class CocUtils(commands.Cog):
         for clan_id, clock in self._war_clocks.items():
             phase = clock.current_phase(now)
             secs_to_queue = (clock.queue_start - now).total_seconds()
-            secs_to_end   = (clock.war_end - now).total_seconds()
+            secs_to_end = (clock.war_end - now).total_seconds()
             lines.append(
                 f"\n**{clan_id}**"
                 f"\n  phase: `{phase}`"
-                f"\n  war ends in: `{secs_to_end:.0f}s` ({secs_to_end/3600:.2f}h)"
-                f"\n  queue opens in: `{secs_to_queue:.0f}s` ({secs_to_queue/3600:.2f}h)"
+                f"\n  war ends in: `{secs_to_end:.0f}s` ({secs_to_end / 3600:.2f}h)"
+                f"\n  queue opens in: `{secs_to_queue:.0f}s` ({secs_to_queue / 3600:.2f}h)"
                 f"\n  queue at: `{clock.queue_start.strftime('%Y-%m-%d %H:%M:%S')} UTC`"
                 f"\n  notified flags: `{[k for k in self._notified if k.startswith(clan_id)]}`"
             )
