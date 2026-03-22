@@ -443,13 +443,14 @@ class CocUtils(commands.Cog):
             else ""
         )
         return (
+            "------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------"
             f" **{war.clan.name}** vs **{war.opponent.name}**\n"
             f" **{our_stats}  |  {opp_stats}**\n"
-            f"## Prep: {self._fmt_discord_time(war.preparation_start, 'f')}"
+            f"## Prep: {self._fmt_discord_time(war.preparation_start, 'R')}"
             f"  ---  Start: {self._fmt_discord_time(war.start_time, 'R')}"
             f"  ---  End: {self._fmt_discord_time(war.end_time, 'f')} / {self._fmt_discord_time(war.end_time, 'R')}"
             f"# {queue_line}\n"
-            # "------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n"
+            "------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n"
         )
 
     def _format_body(self, war: WarState) -> str:
