@@ -452,7 +452,7 @@ class CocUtils(commands.Cog):
             attacks_str = (
                 "  ".join(fmt_attack(a) for a in m.attacks) if m.attacks else " - "
             )
-            pad = max_len - len(m.name) - 3
+            pad = max_len - len(m.name) - 15
             atk_pad = atk_max - len(attacks_str)
             lines.append(
                 f"\033[1;36m{m.name}\033[0m{' ' * pad}: {attacks_str}{' ' * atk_pad} --- {m.opponent_attacks} defended"
