@@ -443,14 +443,12 @@ class CocUtils(commands.Cog):
             else ""
         )
         return (
-            "------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------"
             f" **{war.clan.name}** vs **{war.opponent.name}**\n"
             f" **{our_stats}  |  {opp_stats}**\n"
             f"## Prep: {self._fmt_discord_time(war.preparation_start, 'R')}"
             f"  ---  Start: {self._fmt_discord_time(war.start_time, 'R')}"
             f"  ---  End: {self._fmt_discord_time(war.end_time, 'f')} / {self._fmt_discord_time(war.end_time, 'R')}"
-            f"# {queue_line}\n"
-            "------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n"
+            f"# {queue_line}"
         )
 
     def _format_body(self, war: WarState) -> str:
@@ -478,7 +476,8 @@ class CocUtils(commands.Cog):
             pad = max_len - len(m.name)
             atk_pad = atk_max - len(attacks_str)
             lines.append(
-                f"\033[1;36m{m.name}\033[0m{' ' * pad}: {attacks_str}{' ' * atk_pad} --- {m.opponent_attacks} defended"
+                "test"
+                # f"\033[1;36m{m.name}\033[0m{' ' * pad}: {attacks_str}{' ' * atk_pad} --- {m.opponent_attacks} defended"
             )
 
         return "```ansi\n" + "\n".join(lines) + "\n```"
@@ -654,3 +653,27 @@ class CocUtils(commands.Cog):
             except Exception as e:
                 print(f"[cocutils] war loop error: {e}")
             await asyncio.sleep(60)
+<<<<<<< HEAD
+=======
+
+    @commands.is_owner()
+    @commands.command()
+    async def wardbg(self, ctx: commands.Context):
+        now = datetime.now(UTC).replace(tzinfo=None)
+        lines = [f"UTC now: `{now.strftime('%Y-%m-%d %H:%M:%S')}`"]
+        if not self._war_clocks:
+            lines.append("No war clocks loaded.")
+        for clan_id, clock in self._war_clocks.items():
+            phase = clock.current_phase(now)
+            secs_to_queue = (clock.queue_start - now).total_seconds()
+            secs_to_end = (clock.war_end - now).total_seconds()
+            lines.append(
+                f"\n**{clan_id}**"
+                f"\n  phase: `{phase}`"
+                f"\n  war ends in: `{secs_to_end:.0f}s` ({secs_to_end / 3600:.2f}h)"
+                f"\n  queue opens in: `{secs_to_queue:.0f}s` ({secs_to_queue / 3600:.2f}h)"
+                f"\n  queue at: `{clock.queue_start.strftime('%Y-%m-%d %H:%M:%S')} UTC`"
+                f"\n  notified flags: `{[k for k in self._notified if k.startswith(clan_id)]}`"
+            )
+        await ctx.send("\n".join(lines))
+>>>>>>> parent of 9f8e1ca (colors + formatting + timechange)
