@@ -539,7 +539,7 @@ class CocUtils(commands.Cog):
         if window != "1h":
             return
 
-        channel = self.bot.get_channel(ANNOUNCE_ID)
+        channel = self.bot.get_channel(1234925550355877938)
         if not isinstance(
             channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)
         ):
@@ -550,35 +550,22 @@ class CocUtils(commands.Cog):
         )
         pass
 
-    async def _on_war_queue(self, window: str, clock: WarClock):
-        if window != "1h":
-            return
-
-        channel = self.bot.get_channel(ANNOUNCE_ID)
+    async def _on_war_queue(self, clock: WarClock):
+        channel = self.bot.get_channel(1234925550355877938)
         if not isinstance(
             channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)
         ):
             return
-
-        await channel.send(
-            f"<@&{1235277600151179364}> war search started {clock.next_queue_str()}"
-        )
+        await channel.send(f"<@&{1235277600151179364}> war search started")
         pass
 
-    async def _on_war_end(self, window: str, clock: WarClock):
-        if window != "1h":
-            return
-
-        channel = self.bot.get_channel(ANNOUNCE_ID)
+    async def _on_war_end(self, clock: WarClock):
+        channel = self.bot.get_channel(1234925550355877938)
         if not isinstance(
             channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)
         ):
             return
-
-        await channel.send(
-            f"<@&{1235277600151179364}> war ended {clock.next_queue_str()}"
-        )
-        pass
+        await channel.send(f"<@&{1235277600151179364}> war search started")
         pass
 
     ###########################################################################
