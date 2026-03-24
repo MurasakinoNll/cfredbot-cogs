@@ -202,6 +202,25 @@ class CocUtils(commands.Cog):
 
     @commands.is_owner()
     @commands.command()
+    async def testping(self, ctx: commands.Context, window: str):
+        """Trigger a ping event manually. Args: 1h, 30m, 5m, queue, end"""
+        if not self._war_clocks:
+            await ctx.send("No war clocks loaded.")
+            return
+        clock = next(iter(self._war_clocks.values()))
+        if window in ("1h", "30m", "5m"):
+            await self._on_queue_approaching(window, clock)
+        elif window == "queue":
+            await self._on_war_queue(clock)
+        elif window == "end":
+            await self._on_war_end(clock)
+        else:
+            await ctx.send(f"Unknown window `{window}`. Use: 1h, 30m, 5m, queue, end")
+            return
+        await ctx.tick()
+
+    @commands.is_owner()
+    @commands.command()
     async def wardbg(self, ctx: commands.Context):
         now = datetime.now(UTC).replace(tzinfo=None)
         lines = [f"UTC now: `{now.strftime('%Y-%m-%d %H:%M:%S')}`"]
