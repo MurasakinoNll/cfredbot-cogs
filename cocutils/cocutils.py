@@ -471,18 +471,18 @@ class CocUtils(commands.Cog):
         )
 
     def _format_body(self, war: WarState) -> str:
-        def fmt_attack(a: dict) -> str:
-            stars = a.get("stars", 0)
-            pct = a.get("destructionPercentage", 0)
-            return f"{stars}⭐ {pct}%"
+        def fmt_attacks(attacks: list[dict]) -> str:
+            if not attacks:
+                return " - "
+            total_stars = sum(a.get("stars", 0) for a in attacks)
+            total_pct = sum(a.get("destructionPercentage", 0) for a in attacks)
+            return f"{total_stars}⭐ {total_pct:.1f}%"
 
         max_len = max((len(m.name) for m in war.clan.members), default=0)
 
         lines = []
         for m in war.clan.members:
-            attacks_str = (
-                "  ".join(fmt_attack(a) for a in m.attacks) if m.attacks else " - "
-            )
+            attacks_str = fmt_attacks(m.attacks)
             pad = max_len - len(m.name)
             lines.append(
                 f"\033[1;36m{m.name}\033[0m{' ' * pad}: {attacks_str} --- {m.opponent_attacks} defended"
