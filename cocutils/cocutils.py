@@ -319,10 +319,25 @@ class CocUtils(commands.Cog):
         except discord.NotFound:
             return None
 
+    async def _cleanup_channel(
+        self,
+        channel: discord.TextChannel | discord.Thread | discord.VoiceChannel,
+        keep_ids: list[int | None],
+    ) -> None:
+        valid = {mid for mid in keep_ids if mid is not None}
+        async for msg in channel.history(limit=100):
+            if msg.author == self.bot.user and msg.id not in valid:
+                try:
+                    await msg.delete()
+                except (discord.NotFound, discord.Forbidden):
+                    pass
+
     async def _refresh(self):
         channel = self.bot.get_channel(CHANNEL_ID)
         if not isinstance(channel, discord.TextChannel):
             return
+
+        await self._cleanup_channel(channel, self._message_ids)
 
         guild = channel.guild
         altnames = self._load_altnames()
@@ -612,7 +627,14 @@ class CocUtils(commands.Cog):
             channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)
         ):
             return
-
+        await self._cleanup_channel(
+            channel,
+            [
+                self._war_body_id,
+                self._war_bangla_id,
+                self._war_main_plain_id,
+            ],
+        )
         main_data = await self._fetch_war_data(CLAN_ID)
         bangla_data = await self._fetch_war_data(BANGLA_ID)
 
