@@ -337,8 +337,6 @@ class CocUtils(commands.Cog):
         if not isinstance(channel, discord.TextChannel):
             return
 
-        await self._cleanup_channel(channel, self._message_ids)
-
         guild = channel.guild
         altnames = self._load_altnames()
         content1, content2 = self._build_contents(guild, altnames)
@@ -351,6 +349,7 @@ class CocUtils(commands.Cog):
                 self._save_state()
             elif msg.content != content:
                 await msg.edit(content=content)
+        await self._cleanup_channel(channel, self._message_ids)
 
     ###########################################################################
     ### WAR — API
@@ -627,14 +626,6 @@ class CocUtils(commands.Cog):
             channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)
         ):
             return
-        await self._cleanup_channel(
-            channel,
-            [
-                self._war_body_id,
-                self._war_bangla_id,
-                self._war_main_plain_id,
-            ],
-        )
         main_data = await self._fetch_war_data(CLAN_ID)
         bangla_data = await self._fetch_war_data(BANGLA_ID)
 
@@ -683,6 +674,14 @@ class CocUtils(commands.Cog):
                 channel, self._war_main_plain_id, main_plain, CLAN_ID
             )
             self._save_state()
+        await self._cleanup_channel(
+            channel,
+            [
+                self._war_body_id,
+                self._war_bangla_id,
+                self._war_main_plain_id,
+            ],
+        )
 
     async def _war_loop(self):
         await self.bot.wait_until_ready()
