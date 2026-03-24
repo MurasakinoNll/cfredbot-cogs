@@ -14,6 +14,8 @@ from redbot.core.bot import Red
 
 CHANNEL_ID = 1483917391980396605
 ANNOUNCE_ID = 1484351000788598927
+PING_CHANNEL_ID = 1234925550355877938
+PING_ROLE_ID = 1235277600151179364
 ROLE_IDS = [
     1235277600151179364,
     1483520189902356641,
@@ -536,37 +538,37 @@ class CocUtils(commands.Cog):
     ###########################################################################
 
     async def _on_queue_approaching(self, window: str, clock: WarClock):
-        if window != "1h":
-            return
-
-        channel = self.bot.get_channel(1234925550355877938)
+        channel = self.bot.get_channel(PING_CHANNEL_ID)
         if not isinstance(
             channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)
         ):
             return
-
-        await channel.send(
-            f"<@&{1235277600151179364}> war search opens {clock.next_queue_str()}"
-        )
-        pass
+        messages = {
+            "1h": f"<@&{PING_ROLE_ID}> war search opens {clock.next_queue_str()} — 1 hour warning",
+            "30m": f"<@&{PING_ROLE_ID}> war search opens {clock.next_queue_str()} — 30 minute warning",
+            "5m": f"<@&{PING_ROLE_ID}> war search opens {clock.next_queue_str()} — 5 minute warning",
+        }
+        await channel.send(messages.get(window, ""))
 
     async def _on_war_queue(self, clock: WarClock):
-        channel = self.bot.get_channel(1234925550355877938)
+        channel = self.bot.get_channel(PING_CHANNEL_ID)
         if not isinstance(
             channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)
         ):
             return
-        await channel.send(f"<@&{1235277600151179364}> war search started")
-        pass
+        await channel.send(
+            f"<@&{PING_ROLE_ID}> war search is open now — press the button!"
+        )
 
     async def _on_war_end(self, clock: WarClock):
-        channel = self.bot.get_channel(1234925550355877938)
+        channel = self.bot.get_channel(PING_CHANNEL_ID)
         if not isinstance(
             channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)
         ):
             return
-        await channel.send(f"<@&{1235277600151179364}> war search started")
-        pass
+        await channel.send(
+            f"<@&{PING_ROLE_ID}> war has ended — cooldown started, search opens {clock.next_queue_str()}"
+        )
 
     ###########################################################################
     ### WAR — POSTING
