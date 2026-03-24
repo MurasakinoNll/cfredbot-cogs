@@ -476,7 +476,7 @@ class CocUtils(commands.Cog):
                 return " - "
             total_stars = sum(a.get("stars", 0) for a in attacks)
             total_pct = sum(a.get("destructionPercentage", 0) for a in attacks)
-            return f"{total_stars}⭐ {total_pct:.1f}%"
+            return f"{total_stars}⭐ {total_pct}%"
 
         max_len = max((len(m.name) for m in war.clan.members), default=0)
 
