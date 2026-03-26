@@ -205,10 +205,52 @@ class ExecPty(commands.Cog):
     ):
         """
         Read PTY output in a background thread and forward to Discord.
-        Buffers by newline; ANSI is normalized to Discord's supported subset.
+
+        Lines are batched together and flushed as a single ```ansi``` block
+        so that ANSI color state flows correctly across lines — a color set on
+        line 1 remains active on line 2 because they share the same code block.
+
+        Flush triggers:
+          - Accumulated text would exceed Discord's 1900-char safe limit
+          - No new data arrives within FLUSH_TIMEOUT seconds (output gone quiet)
         """
-        buf = b""
+        import select
+
+        FLUSH_TIMEOUT = 0.35  # seconds of silence before flushing
+        MAX_BLOCK = 1900  # safe chars per ```ansi``` block
+
+        raw_buf = b""  # unprocessed bytes from the PTY
+        text_buf = ""  # normalized text waiting to be sent
+
+        def flush():
+            nonlocal text_buf
+            if not text_buf.strip():
+                text_buf = ""
+                return
+            block = text_buf
+            text_buf = ""
+            while block:
+                if len(block) <= MAX_BLOCK:
+                    asyncio.run_coroutine_threadsafe(
+                        self._send_output(channel_id, block.strip()), loop
+                    )
+                    break
+                # Split cleanly on the last newline before the limit
+                split_at = block.rfind("\n", 0, MAX_BLOCK)
+                if split_at == -1:
+                    split_at = MAX_BLOCK
+                part, block = block[:split_at], block[split_at:]
+                asyncio.run_coroutine_threadsafe(
+                    self._send_output(channel_id, part.strip()), loop
+                )
+
         while self._running:
+            # Wait up to FLUSH_TIMEOUT for data; silence means flush
+            ready, _, _ = select.select([master_fd], [], [], FLUSH_TIMEOUT)
+            if not ready:
+                flush()
+                continue
+
             try:
                 chunk = os.read(master_fd, 4096)
             except OSError:
@@ -217,37 +259,26 @@ class ExecPty(commands.Cog):
             if not chunk:
                 break
 
-            buf += chunk
+            raw_buf += chunk
 
-            while b"\n" in buf or len(buf) > 1900:
-                if b"\n" in buf:
-                    line, buf = buf.split(b"\n", 1)
-                    line = line + b"\n"
-                else:
-                    line, buf = buf[:1900], buf[1900:]
+            # Drain all complete lines into text_buf
+            while b"\n" in raw_buf:
+                line_bytes, raw_buf = raw_buf.split(b"\n", 1)
+                line = line_bytes.decode(errors="replace") + "\n"
+                text_buf += normalize_ansi(line)
 
-                text = line.decode(errors="replace")
-                text = normalize_ansi(text).strip()
-                if not text:
-                    continue
+                # Pre-emptively flush if we're already near the limit
+                if len(text_buf) >= MAX_BLOCK:
+                    flush()
 
-                for part in chunk_text(text):
-                    asyncio.run_coroutine_threadsafe(
-                        self._send_output(channel_id, part), loop
-                    )
-
-        # Drain leftover buffer
-        if buf:
-            text = normalize_ansi(buf.decode(errors="replace")).strip()
-            if text:
-                for part in chunk_text(text):
-                    asyncio.run_coroutine_threadsafe(
-                        self._send_output(channel_id, part), loop
-                    )
+        # Drain remaining bytes then final flush
+        if raw_buf:
+            text_buf += normalize_ansi(raw_buf.decode(errors="replace"))
+        flush()
 
         if self._running:
             asyncio.run_coroutine_threadsafe(
-                self._send_output(channel_id, "PTY process exited."), loop
+                self._send_output(channel_id, "⚠️ PTY process exited."), loop
             )
         self._running = False
         self._proc = None
@@ -294,7 +325,11 @@ class ExecPty(commands.Cog):
         )
         self._reader_thread.start()
 
-        await ctx.send(f"PTY session started (PID `{proc.pid}`). ")
+        await ctx.send(
+            f"✅ PTY session started (PID `{proc.pid}`). "
+            f"Terminal channel: <#{TERMINAL_CHANNEL_ID}>. "
+            f"Type anything there — it goes straight to bash."
+        )
 
     @commands.is_owner()
     @commands.command()
@@ -367,7 +402,9 @@ class ExecPty(commands.Cog):
             return
 
         if not self._running:
-            await message.channel.send("No active PTY session.", delete_after=5)
+            await message.channel.send(
+                "⚠️ No active PTY session. Use `!ptystart` to begin.", delete_after=5
+            )
             return
 
         try:
