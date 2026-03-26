@@ -245,27 +245,26 @@ class ExecPty(commands.Cog):
         """
         Any message sent in the terminal channel by the bot owner is
         forwarded to the PTY as-is (no command prefix needed).
-        Commands (!pty*, !exec*) are ignored here to avoid double-sending.
+        Only messages that invoke an actual registered bot command are skipped
+        to avoid double-sending.
         """
         if message.channel.id != TERMINAL_CHANNEL_ID:
             return
         if message.author.bot:
             return
 
-        # Only the bot owner may use the terminal channel as a raw PTY
-        app_info = await self.bot.application_info()
-        if message.author.id != app_info.owner.id:
+        # Use Red's built-in owner check — works for both solo and team ownership
+        if not await self.bot.is_owner(message.author):
             return
 
         content = message.content.strip()
         if not content:
             return
 
-        # Skip lines that are already bot commands so they aren't double-sent
-        prefixes = await self.bot.get_prefix(message)
-        if isinstance(prefixes, str):
-            prefixes = [prefixes]
-        if any(content.startswith(p) for p in prefixes):
+        # Skip only if this message would actually invoke a registered bot command,
+        # so things like "!ls", "!pwd" etc. still pass through to the PTY.
+        ctx = await self.bot.get_context(message)
+        if ctx.valid and ctx.command is not None:
             return
 
         if not self._running:
