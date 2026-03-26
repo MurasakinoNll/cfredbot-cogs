@@ -153,6 +153,7 @@ def normalize_ansi(raw: str) -> str:
     text = _DISCARD_RE.sub("", raw)
     text = _SGR_RE.sub(_remap_sgr, text)
     text = _consolidate_sgr(text)
+    # Only strip truly orphaned ESC bytes (not followed by '['), not valid sequences
     text = re.sub(r"\x1b(?!\[)", "", text)
     return text
 
@@ -400,6 +401,118 @@ class ExecPty(commands.Cog):
             self._send_to_pty(cmd)
         except Exception as e:
             await ctx.send(f"Failed to write to PTY: {e}")
+
+    @commands.is_owner()
+    @commands.command()
+    async def ptykey(self, ctx, *, key: str):
+        """
+        Send a special key or control sequence to the PTY.
+
+        Named keys (case-insensitive):
+          return / enter    Carriage return (\r)
+          tab               Horizontal tab (\t)
+          escape / esc      Escape key (\x1b)
+          backspace / bs    Backspace (\x7f)
+          delete / del      Delete (\x1b[3~)
+          up                Arrow up (\x1b[A)
+          down              Arrow down (\x1b[B)
+          right             Arrow right (\x1b[C)
+          left              Arrow left (\x1b[D)
+          home              Home (\x1b[H)
+          end               End (\x1b[F)
+          pageup / pgup     Page up (\x1b[5~)
+          pagedown / pgdn   Page down (\x1b[6~)
+          f1 .. f12         Function keys
+
+        Control characters: ctrl+a .. ctrl+z  (e.g. ctrl+c, ctrl+d, ctrl+z)
+
+        You can also chain keys with spaces: !ptykey escape escape return
+        Or send a raw hex byte: !ptykey hex:1b
+        """
+        _NAMED = {
+            "return": b"\r",
+            "enter": b"\r",
+            "tab": b"\t",
+            "escape": b"\x1b",
+            "esc": b"\x1b",
+            "backspace": b"\x7f",
+            "bs": b"\x7f",
+            "delete": b"\x1b[3~",
+            "del": b"\x1b[3~",
+            "up": b"\x1b[A",
+            "down": b"\x1b[B",
+            "right": b"\x1b[C",
+            "left": b"\x1b[D",
+            "home": b"\x1b[H",
+            "end": b"\x1b[F",
+            "pageup": b"\x1b[5~",
+            "pgup": b"\x1b[5~",
+            "pagedown": b"\x1b[6~",
+            "pgdn": b"\x1b[6~",
+            "f1": b"\x1bOP",
+            "f2": b"\x1bOQ",
+            "f3": b"\x1bOR",
+            "f4": b"\x1bOS",
+            "f5": b"\x1b[15~",
+            "f6": b"\x1b[17~",
+            "f7": b"\x1b[18~",
+            "f8": b"\x1b[19~",
+            "f9": b"\x1b[20~",
+            "f10": b"\x1b[21~",
+            "f11": b"\x1b[23~",
+            "f12": b"\x1b[24~",
+        }
+
+        if not self._running:
+            await ctx.send("No active PTY session. Use `!ptystart` first.")
+            return
+
+        if self._master_fd is None:
+            await ctx.send("No active PTY fd.")
+            return
+
+        payload = b""
+        tokens = key.lower().split()
+        unknown = []
+
+        for token in tokens:
+            # Raw hex: hex:1b  or  hex:0d
+            if token.startswith("hex:"):
+                try:
+                    payload += bytes.fromhex(token[4:])
+                    continue
+                except ValueError:
+                    unknown.append(token)
+                    continue
+
+            # ctrl+x  →  control character 0x01-0x1a
+            if token.startswith("ctrl+") and len(token) == 6:
+                ch = token[5]
+                if "a" <= ch <= "z":
+                    payload += bytes([ord(ch) - ord("a") + 1])
+                    continue
+
+            if token in _NAMED:
+                payload += _NAMED[token]
+                continue
+
+            unknown.append(token)
+
+        if unknown:
+            await ctx.send(
+                f"Unknown key(s): {', '.join(f'`{u}`' for u in unknown)}. "
+                f"See `!help ptykey` for the full list."
+            )
+            return
+
+        if not payload:
+            await ctx.send("No keys to send.")
+            return
+
+        try:
+            os.write(self._master_fd, payload)
+        except Exception as e:
+            await ctx.send(f"PTY write error: {e}")
 
     @commands.is_owner()
     @commands.command()
