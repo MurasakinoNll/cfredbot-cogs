@@ -153,7 +153,7 @@ def normalize_ansi(raw: str) -> str:
     text = _DISCARD_RE.sub("", raw)
     text = _SGR_RE.sub(_remap_sgr, text)
     text = _consolidate_sgr(text)
-    text = text.replace("\x1b", "")
+    text = re.sub(r"\x1b(?!\[)", "", text)
     return text
 
 
