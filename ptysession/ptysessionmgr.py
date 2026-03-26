@@ -9,11 +9,106 @@ import signal
 from redbot.core import commands
 
 TERMINAL_CHANNEL_ID = 1486807756290785400
-ANSI_ESCAPE = re.compile(r"(?:\x9B|\x1B\[)[0-9;?]*[A-Za-ln-z]|\x1B[()][AB012]|\x1B=|\r")
+
+# ---------------------------------------------------------------------------
+# ANSI processing
+#
+# Discord's ```ansi``` blocks support ONLY:
+#   Formats : 0 (reset), 1 (bold), 4 (underline)
+#   FG color: 30-37
+#   BG color: 40-47
+#
+# Everything else must be stripped or remapped before sending.
+# ---------------------------------------------------------------------------
+
+# Sequences to discard entirely (cursor movement, erase, scroll, OSC,
+# private modes, charset switching, application keypad, etc.)
+_DISCARD_RE = re.compile(
+    r"\x1b\[[0-9;?]*[ABCDEFGHJKLMPSTfhnsu]"  # cursor / erase / scroll (non-SGR)
+    r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"  # OSC sequences  e.g. ]10;? ]11;?
+    r"|\x1b[()][AB012]"  # charset G0/G1 designation
+    r"|\x1b[=>]"  # application / normal keypad
+    r"|\x1b[MDE78]"  # reverse index, next line, etc.
+    r"|\x9b[^@-~]*[@-~]"  # C1 CSI
+    r"|\r",  # bare CR from PTY line discipline
+    re.ASCII,
+)
+
+_SUPPORTED_FMT = {0, 1, 4}
+_SUPPORTED_FG = set(range(30, 38))
+_SUPPORTED_BG = set(range(40, 48))
+
+# Matches any SGR sequence: ESC [ <codes> m
+_SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
 
 
-def strip_ansi(text: str) -> str:
-    return ANSI_ESCAPE.sub("", text)
+def _remap_sgr(match: re.Match) -> str:
+    """
+    Remap an SGR sequence to only Discord-supported codes.
+    - High-intensity fg 90-97  → standard fg 30-37
+    - High-intensity bg 100-107 → standard bg 40-47
+    - Unsupported format codes  → reset (0)
+    - 256-color / RGB           → dropped
+    Returns '' if the result is empty.
+    """
+    inner = match.group(1)
+    raw_codes = inner.split(";") if inner else ["0"]
+
+    out = []
+    skip = 0
+    codes = list(raw_codes)
+    i = 0
+    while i < len(codes):
+        part = codes[i]
+        i += 1
+        try:
+            n = int(part)
+        except ValueError:
+            continue
+
+        # 256-color / RGB: ESC[38;5;Nm, ESC[38;2;R;G;Bm, same for 48
+        if n in (38, 48):
+            if i < len(codes):
+                mode = codes[i]
+                i += 1
+                if mode == "5" and i < len(codes):
+                    i += 1  # skip palette index
+                elif mode == "2" and i + 2 < len(codes):
+                    i += 3  # skip R G B
+            out.append("0")  # replace with reset
+            continue
+
+        if n in _SUPPORTED_FMT or n in _SUPPORTED_FG or n in _SUPPORTED_BG:
+            out.append(str(n))
+        elif 90 <= n <= 97:
+            out.append(str(n - 60))  # bright fg → normal fg
+        elif 100 <= n <= 107:
+            out.append(str(n - 60))  # bright bg → normal bg
+        else:
+            out.append("0")  # anything else → reset
+
+    if not out:
+        return ""
+
+    # Collapse consecutive resets into one
+    deduped: list[str] = []
+    for c in out:
+        if c != "0" or not deduped or deduped[-1] != "0":
+            deduped.append(c)
+
+    return f"\x1b[{';'.join(deduped)}m"
+
+
+def normalize_ansi(raw: str) -> str:
+    """
+    1. Strip all non-SGR escape sequences (cursor moves, OSC, etc.)
+    2. Remap SGR codes to the Discord-supported subset.
+    3. Kill any leftover bare ESC bytes.
+    """
+    text = _DISCARD_RE.sub("", raw)
+    text = _SGR_RE.sub(_remap_sgr, text)
+    text = text.replace("\x1b", "")
+    return text
 
 
 def chunk_text(text: str, size: int = 1900):
@@ -21,10 +116,15 @@ def chunk_text(text: str, size: int = 1900):
         yield text[i : i + size]
 
 
+# ---------------------------------------------------------------------------
+# Cog
+# ---------------------------------------------------------------------------
+
+
 class ExecPty(commands.Cog):
     """
     Persistent PTY terminal session bridged to a Discord channel.
-    All messages sent in the terminal channel are forwarded directly to the shell.
+    All messages sent in the terminal channel are forwarded directly to bash.
     """
 
     def __init__(self, bot):
@@ -82,11 +182,19 @@ class ExecPty(commands.Cog):
         return master_fd, proc
 
     def _send_to_pty(self, text: str):
-        """Write a line of text to the PTY master fd."""
+        """
+        Write input to the PTY using \\r as the line terminator.
+
+        Real terminals send \\r (carriage return) when Enter is pressed, not \\n.
+        Curses programs (vim, nano, htop, etc.) rely on this — sending \\n will
+        cause the keypress to be ignored or misinterpreted.
+        """
         if self._master_fd is None:
             raise RuntimeError("No active PTY session.")
-        data = (text + "\n").encode()
-        os.write(self._master_fd, data)
+        data = text.replace("\n", "\r")
+        if not data.endswith("\r"):
+            data += "\r"
+        os.write(self._master_fd, data.encode())
 
     # ------------------------------------------------------------------ #
     #  Background reader                                                   #
@@ -96,15 +204,14 @@ class ExecPty(commands.Cog):
         self, master_fd: int, loop: asyncio.AbstractEventLoop, channel_id: int
     ):
         """
-        Read PTY output in a background thread and schedule Discord sends
-        on the bot's event loop.
+        Read PTY output in a background thread and forward to Discord.
+        Buffers by newline; ANSI is normalized to Discord's supported subset.
         """
         buf = b""
         while self._running:
             try:
                 chunk = os.read(master_fd, 4096)
             except OSError:
-                # PTY closed
                 break
 
             if not chunk:
@@ -112,8 +219,6 @@ class ExecPty(commands.Cog):
 
             buf += chunk
 
-            # Flush on newlines so we don't hold partial lines forever,
-            # but also flush if the buffer gets large.
             while b"\n" in buf or len(buf) > 1900:
                 if b"\n" in buf:
                     line, buf = buf.split(b"\n", 1)
@@ -122,7 +227,7 @@ class ExecPty(commands.Cog):
                     line, buf = buf[:1900], buf[1900:]
 
                 text = line.decode(errors="replace")
-                text = strip_ansi(text).strip()
+                text = normalize_ansi(text).strip()
                 if not text:
                     continue
 
@@ -131,9 +236,9 @@ class ExecPty(commands.Cog):
                         self._send_output(channel_id, part), loop
                     )
 
-        # Drain any leftover
+        # Drain leftover buffer
         if buf:
-            text = strip_ansi(buf.decode(errors="replace")).strip()
+            text = normalize_ansi(buf.decode(errors="replace")).strip()
             if text:
                 for part in chunk_text(text):
                     asyncio.run_coroutine_threadsafe(
@@ -142,7 +247,7 @@ class ExecPty(commands.Cog):
 
         if self._running:
             asyncio.run_coroutine_threadsafe(
-                self._send_output(channel_id, "⚠️ PTY process exited."), loop
+                self._send_output(channel_id, "PTY process exited."), loop
             )
         self._running = False
         self._proc = None
@@ -189,11 +294,7 @@ class ExecPty(commands.Cog):
         )
         self._reader_thread.start()
 
-        await ctx.send(
-            f"✅ PTY session started (PID `{proc.pid}`). "
-            f"Terminal channel: <#{TERMINAL_CHANNEL_ID}>. "
-            f"Type anything there — it goes straight to bash."
-        )
+        await ctx.send(f"PTY session started (PID `{proc.pid}`). ")
 
     @commands.is_owner()
     @commands.command()
@@ -209,7 +310,7 @@ class ExecPty(commands.Cog):
     @commands.is_owner()
     @commands.command()
     async def pty(self, ctx, *, cmd: str):
-        """Send a command directly to the PTY session (works from any channel)."""
+        """Send input directly to the PTY session (works from any channel)."""
         if not self._running:
             await ctx.send("No active PTY session. Use `!ptystart` first.")
             return
@@ -253,7 +354,6 @@ class ExecPty(commands.Cog):
         if message.author.bot:
             return
 
-        # Use Red's built-in owner check — works for both solo and team ownership
         if not await self.bot.is_owner(message.author):
             return
 
@@ -261,16 +361,13 @@ class ExecPty(commands.Cog):
         if not content:
             return
 
-        # Skip only if this message would actually invoke a registered bot command,
-        # so things like "!ls", "!pwd" etc. still pass through to the PTY.
+        # Skip real registered bot commands to avoid double-sending
         ctx = await self.bot.get_context(message)
         if ctx.valid and ctx.command is not None:
             return
 
         if not self._running:
-            await message.channel.send(
-                "⚠️ No active PTY session. Use `!ptystart` to begin.", delete_after=5
-            )
+            await message.channel.send("No active PTY session.", delete_after=5)
             return
 
         try:
