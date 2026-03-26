@@ -21,11 +21,16 @@ TERMINAL_CHANNEL_ID = 1486807756290785400
 # Everything else must be stripped or remapped before sending.
 # ---------------------------------------------------------------------------
 
-# Sequences to discard entirely (cursor movement, erase, scroll, OSC,
-# private modes, charset switching, application keypad, etc.)
+# Sequences to discard entirely.
+#
+# Key fix: the final-byte set covers [A-LN-Za-ln-z] — every CSI final byte
+# EXCEPT 'm' (SGR). This correctly catches ?25l (hide cursor), ?2004l
+# (bracketed paste), ?7l (no-wrap), cursor moves, erase, scroll — all of them.
+# The old pattern listed specific letters and was missing 'l', causing private
+# mode sequences like ESC[?25l to survive as literal garbage in output.
 _DISCARD_RE = re.compile(
-    r"\x1b\[[0-9;?]*[ABCDEFGHJKLMPSTfhnsu]"  # cursor / erase / scroll (non-SGR)
-    r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"  # OSC sequences  e.g. ]10;? ]11;?
+    r"\x1b\[[0-9;?]*[A-LN-Za-ln-z]"  # all CSI with final byte != m
+    r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"  # OSC  e.g. ]10;? ]11;?
     r"|\x1b[()][AB012]"  # charset G0/G1 designation
     r"|\x1b[=>]"  # application / normal keypad
     r"|\x1b[MDE78]"  # reverse index, next line, etc.
@@ -40,6 +45,10 @@ _SUPPORTED_BG = set(range(40, 48))
 
 # Matches any SGR sequence: ESC [ <codes> m
 _SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
+
+# Two adjacent SGR sequences that can be merged into one.
+# ESC[0mESC[1m  →  ESC[0;1m  — reduces noise from apps that emit one code at a time.
+_ADJ_SGR_RE = re.compile(r"(\x1b\[[0-9;]*m)(\x1b\[[0-9;]*m)")
 
 
 def _remap_sgr(match: re.Match) -> str:
@@ -99,14 +108,51 @@ def _remap_sgr(match: re.Match) -> str:
     return f"\x1b[{';'.join(deduped)}m"
 
 
+def _consolidate_sgr(text: str) -> str:
+    """
+    Merge adjacent SGR sequences, respecting reset semantics.
+
+    - ESC[37mESC[0;1m  -> ESC[0;1m   (37 is wiped by the following reset, drop it)
+    - ESC[0mESC[1m     -> ESC[0;1m   (safe merge)
+    - ESC[31mESC[1m    -> ESC[31;1m  (safe merge, no reset)
+
+    Repeats until stable to handle runs of 3+.
+    """
+
+    def merge(m: re.Match) -> str:
+        a_inner = m.group(1)[2:-1]
+        b_inner = m.group(2)[2:-1]
+        b_codes = b_inner.split(";") if b_inner else ["0"]
+        # If the second sequence starts with a reset, the first is fully
+        # overridden — discard it and keep only the second.
+        if b_codes[0] in ("", "0"):
+            return m.group(2)
+        # Deduplicate codes while preserving order (last reset already handled above)
+        seen = set()
+        merged = []
+        for c in filter(None, (a_inner + ";" + b_inner).split(";")):
+            if c not in seen:
+                seen.add(c)
+                merged.append(c)
+        return f"\x1b[{';'.join(merged)}m"
+
+    prev = None
+    while prev != text:
+        prev = text
+        text = _ADJ_SGR_RE.sub(merge, text)
+    return text
+
+
 def normalize_ansi(raw: str) -> str:
     """
-    1. Strip all non-SGR escape sequences (cursor moves, OSC, etc.)
+    1. Strip all non-SGR escape sequences (cursor moves, OSC, private modes, etc.)
     2. Remap SGR codes to the Discord-supported subset.
-    3. Kill any leftover bare ESC bytes.
+    3. Merge adjacent SGR sequences to reduce noise.
+    4. Kill any leftover bare ESC bytes.
     """
     text = _DISCARD_RE.sub("", raw)
     text = _SGR_RE.sub(_remap_sgr, text)
+    text = _consolidate_sgr(text)
     text = text.replace("\x1b", "")
     return text
 
