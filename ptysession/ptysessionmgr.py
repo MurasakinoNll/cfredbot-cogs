@@ -295,6 +295,12 @@ class ExecPty(commands.Cog):
             # Wait up to FLUSH_TIMEOUT for data; silence means flush
             ready, _, _ = select.select([master_fd], [], [], FLUSH_TIMEOUT)
             if not ready:
+                # On silence: drain raw_buf first — curses apps like vi
+                # never write \n so their output sits in raw_buf forever
+                # and would never make it into text_buf without this.
+                if raw_buf:
+                    text_buf += normalize_ansi(raw_buf.decode(errors="replace"))
+                    raw_buf = b""
                 flush()
                 continue
 
@@ -316,6 +322,9 @@ class ExecPty(commands.Cog):
 
                 # Pre-emptively flush if we're already near the limit
                 if len(text_buf) >= MAX_BLOCK:
+                    if raw_buf:
+                        text_buf += normalize_ansi(raw_buf.decode(errors="replace"))
+                        raw_buf = b""
                     flush()
 
         # Drain remaining bytes then final flush
@@ -373,9 +382,8 @@ class ExecPty(commands.Cog):
         self._reader_thread.start()
 
         await ctx.send(
-            f"✅ PTY session started (PID `{proc.pid}`). "
+            f"PTY session started (PID `{proc.pid}`). "
             f"Terminal channel: <#{TERMINAL_CHANNEL_ID}>. "
-            f"Type anything there — it goes straight to bash."
         )
 
     @commands.is_owner()
@@ -513,6 +521,44 @@ class ExecPty(commands.Cog):
             os.write(self._master_fd, payload)
         except Exception as e:
             await ctx.send(f"PTY write error: {e}")
+
+    @commands.is_owner()
+    @commands.command()
+    async def ptyrefresh(self, ctx):
+        """
+        Force the active PTY program to redraw its screen.
+
+        Sends SIGWINCH (window resize) to the foreground process group, which
+        causes curses programs (vi, nano, htop, etc.) to fully repaint their
+        screen. Use this after launching an interactive program that appears
+        blank, or any time the display looks stale.
+        """
+        if not self._running or self._proc is None:
+            await ctx.send("No active PTY session.")
+            return
+
+        if self._master_fd is None:
+            await ctx.send("No active PTY fd.")
+            return
+
+        try:
+            import fcntl
+            import termios
+            import struct
+
+            # Set the PTY window size to something large so programs render
+            # a full screen worth of content rather than a tiny 80x24 box.
+            # Cols x rows — 220 cols, 50 rows is a reasonable Discord-friendly size.
+            COLS, ROWS = 220, 50
+            winsize = struct.pack("HHHH", ROWS, COLS, 0, 0)
+            fcntl.ioctl(self._master_fd, termios.TIOCSWINSZ, winsize)
+
+            # SIGWINCH tells the foreground process group the terminal resized.
+            # The process redraws its entire screen in response.
+            os.killpg(os.getpgid(self._proc.pid), signal.SIGWINCH)
+            await ctx.send("↺ Sent SIGWINCH — screen should redraw momentarily.")
+        except Exception as e:
+            await ctx.send(f"Refresh failed: {type(e).__name__}: {e}")
 
     @commands.is_owner()
     @commands.command()
