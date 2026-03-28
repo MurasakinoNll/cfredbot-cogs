@@ -519,4 +519,4 @@ class WarCog(commands.Cog):
                     await self.fetch_and_post_war()
                 except Exception as e:
                     print(f"[cocutils] war loop error: {e}")
-            await asyncio.sleep(60)
+            await asyncio.sleep(120)
