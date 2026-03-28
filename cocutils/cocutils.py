@@ -707,3 +707,8 @@ class CocUtils(commands.Cog):
             except Exception as e:
                 print(f"[cocutils] war loop error: {e}")
             await asyncio.sleep(60)
+
+    @commands.is_owner()
+    @commands.command()
+    async def clockcount(self, ctx: commands.Context):
+        await ctx.send(str(len(self._war_clocks)))
