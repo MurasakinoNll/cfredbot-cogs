@@ -136,14 +136,10 @@ class WarCog(commands.Cog):
     ### COMMANDS
     ###########################################################################
 
-    @commands.is_owner()
-    @commands.command()
     async def clanstat(self, ctx: commands.Context):
         await self.fetch_and_post_war()
         await ctx.tick()
 
-    @commands.is_owner()
-    @commands.command()
     async def clockrm(self, ctx: commands.Context):
         """Clear all active war clocks, notification flags, and cached war message IDs."""
         self._war_clocks.clear()
@@ -154,13 +150,9 @@ class WarCog(commands.Cog):
         self._save_state()
         await ctx.tick()
 
-    @commands.is_owner()
-    @commands.command()
     async def clockcount(self, ctx: commands.Context):
         await ctx.send(str(len(self._war_clocks)))
 
-    @commands.is_owner()
-    @commands.command()
     async def testping(self, ctx: commands.Context, window: str):
         """Trigger a ping event manually. Args: 1h, 30m, 5m, queue, end"""
         if not self._war_clocks:
@@ -178,8 +170,6 @@ class WarCog(commands.Cog):
             return
         await ctx.tick()
 
-    @commands.is_owner()
-    @commands.command()
     async def wardbg(self, ctx: commands.Context):
         now = datetime.now(UTC).replace(tzinfo=None)
         lines = [f"UTC now: `{now.strftime('%Y-%m-%d %H:%M:%S')}`"]
