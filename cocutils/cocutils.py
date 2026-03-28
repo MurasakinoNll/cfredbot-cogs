@@ -478,7 +478,7 @@ class CocUtils(commands.Cog):
             else ""
         )
         return (
-            "──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
+            "──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n"
             f" **{war.clan.name}** vs **{war.opponent.name}**\n"
             f" **{our_stats}  |  {opp_stats}**\n"
             f"## Prep: {self._fmt_discord_time(war.preparation_start, 'R')}"
@@ -577,9 +577,8 @@ class CocUtils(commands.Cog):
         ):
             return
         messages = {
-            "1h": f"<@&{PING_ROLE_ID}> war search opens {clock.next_queue_str()} — 1 hour warning",
-            "30m": f"<@&{PING_ROLE_ID}> war search opens {clock.next_queue_str()} — 30 minute warning",
-            "5m": f"<@&{PING_ROLE_ID}> war search opens {clock.next_queue_str()} — 5 minute warning",
+            "1h": f"<@&{PING_ROLE_ID}> war search in 1 hour {clock.next_queue_str()}",
+            "5m": f"<@&{PING_ROLE_ID}> war search in 5 minutes {clock.next_queue_str()}",
         }
         await channel.send(messages.get(window, ""))
 
@@ -589,9 +588,7 @@ class CocUtils(commands.Cog):
             channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)
         ):
             return
-        await channel.send(
-            f"<@&{PING_ROLE_ID}> war search is open now — press the button!"
-        )
+        await channel.send(f"<@&{PING_ROLE_ID}> war search started")
 
     async def _on_war_end(self, clock: WarClock):
         channel = self.bot.get_channel(PING_CHANNEL_ID)
@@ -600,7 +597,7 @@ class CocUtils(commands.Cog):
         ):
             return
         await channel.send(
-            f"<@&{PING_ROLE_ID}> war has ended — cooldown started, search opens {clock.next_queue_str()}"
+            f"<@&{PING_ROLE_ID}> war has ended — next search begins at: {clock.next_queue_str()}"
         )
 
     ###########################################################################
