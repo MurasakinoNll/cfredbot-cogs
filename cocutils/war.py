@@ -394,7 +394,9 @@ class WarCog(commands.Cog):
         }
         msg = messages.get(window, "")
         if msg:
-            await channel.send(msg)
+            await channel.send(
+                msg, allowed_mentions=discord.AllowedMentions(roles=True)
+            )
 
     async def _on_war_queue(self, clock: WarClock):
         channel = self.bot.get_channel(PING_CHANNEL_ID)
@@ -402,7 +404,10 @@ class WarCog(commands.Cog):
             channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)
         ):
             return
-        await channel.send(f"<@&{PING_ROLE_ID}> war search started")
+        await channel.send(
+            f"<@&{PING_ROLE_ID}> war search started",
+            allowed_mentions=discord.AllowedMentions(roles=True),
+        )
 
     async def _on_war_end(self, clock: WarClock):
         channel = self.bot.get_channel(PING_CHANNEL_ID)
@@ -411,7 +416,8 @@ class WarCog(commands.Cog):
         ):
             return
         await channel.send(
-            f"<@&{PING_ROLE_ID}> war has ended — next search begins at: {clock.next_queue_str()}"
+            f"<@&{PING_ROLE_ID}> war has ended — next search begins at: {clock.next_queue_str()}",
+            allowed_mentions=discord.AllowedMentions(roles=True),
         )
 
     ###########################################################################
