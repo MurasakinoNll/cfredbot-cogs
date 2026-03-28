@@ -16,6 +16,7 @@ class CocUtils(commands.Cog):
         self.rolelist = RoleListCog(bot, self._save_state)
         self.war = WarCog(bot, self._save_state)
         self._load_state()
+        self._paused: bool = False
 
     ###########################################################################
     ### STATE PERSISTENCE
@@ -79,6 +80,7 @@ class CocUtils(commands.Cog):
     @commands.is_owner()
     @commands.command()
     async def clockrm(self, ctx: commands.Context):
+        self.war._paused = True
         self.war._war_clocks.clear()
         self.war._notified.clear()
         self.war._war_body_id = None
@@ -87,17 +89,11 @@ class CocUtils(commands.Cog):
         self._save_state()
         await ctx.tick()
 
-    @commands.is_owner()
-    @commands.command()
     async def clockcount(self, ctx: commands.Context):
         await ctx.send(str(len(self.war._war_clocks)))
 
-    @commands.is_owner()
-    @commands.command()
     async def testping(self, ctx: commands.Context, window: str):
         await self.war.testping(ctx, window)
 
-    @commands.is_owner()
-    @commands.command()
     async def wardbg(self, ctx: commands.Context):
         await self.war.wardbg(ctx)

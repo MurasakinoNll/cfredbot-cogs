@@ -114,6 +114,7 @@ class WarCog(commands.Cog):
         self._clock_task: asyncio.Task | None = None
         self._war_clocks: dict[str, WarClock] = {}
         self._notified: set[str] = set()
+        self._paused: bool = False
 
     ###########################################################################
     ### LIFECYCLE
@@ -523,8 +524,9 @@ class WarCog(commands.Cog):
     async def _war_loop(self):
         await self.bot.wait_until_ready()
         while not self.bot.is_closed():
-            try:
-                await self.fetch_and_post_war()
-            except Exception as e:
-                print(f"[cocutils] war loop error: {e}")
+            if not self._paused:
+                try:
+                    await self.fetch_and_post_war()
+                except Exception as e:
+                    print(f"[cocutils] war loop error: {e}")
             await asyncio.sleep(60)
