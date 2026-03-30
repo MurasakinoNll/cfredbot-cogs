@@ -56,6 +56,9 @@ class CocUtils(commands.Cog):
     async def on_ready(self):
         await self.rolelist.refresh()
         await self.war.start_loops()
+        guild = self.bot.guilds[0] if self.bot.guilds else None
+        if guild:
+            await self.cwl.post_board(guild)
 
     @commands.Cog.listener()
     async def on_member_update(self, before, after):
@@ -116,3 +119,21 @@ class CocUtils(commands.Cog):
     @commands.command()
     async def phasetest(self, ctx: commands.Context):
         await self.war.phasetest(ctx)
+
+    @commands.is_owner()
+    @commands.command()
+    async def cwlupdate(self, ctx: commands.Context):
+        """Fetch current CWL season and update the leaderboard."""
+        status = await self.cwl.update()
+        await ctx.send(status)
+        guild = ctx.guild
+        if guild:
+            await self.cwl.post_board(guild)
+
+    @commands.is_owner()
+    @commands.command()
+    async def cwlboard(self, ctx: commands.Context):
+        """Manually refresh the CWL leaderboard post."""
+        if ctx.guild:
+            await self.cwl.post_board(ctx.guild)
+        await ctx.tick()
