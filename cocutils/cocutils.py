@@ -1,6 +1,6 @@
 import os
 import json
-
+from .cwl import CwlCog
 from redbot.core import commands
 from redbot.core.bot import Red
 
@@ -15,6 +15,7 @@ class CocUtils(commands.Cog):
         self.bot = bot
         self.rolelist = RoleListCog(bot, self._save_state)
         self.war = WarCog(bot, self._save_state)
+        self.cwl = CwlCog(bot, self._save_state)
         self._load_state()
 
     ###########################################################################
@@ -28,6 +29,7 @@ class CocUtils(commands.Cog):
         try:
             with open(self._state_path(), "r", encoding="utf-8") as f:
                 data = json.load(f)
+                self.cwl._board_id = data.get("cwl_board_id")
                 self.rolelist._message_ids = data.get("message_ids", [None, None])
                 self.war._war_body_id = data.get("war_body_id")
                 self.war._war_bangla_id = data.get("war_bangla_id")
@@ -40,6 +42,7 @@ class CocUtils(commands.Cog):
             "message_ids": self.rolelist._message_ids,
             "war_body_id": self.war._war_body_id,
             "war_bangla_id": self.war._war_bangla_id,
+            "cwl_board_id": self.cwl._board_id,
             "war_main_plain_id": self.war._war_main_plain_id,
         }
         with open(self._state_path(), "w", encoding="utf-8") as f:

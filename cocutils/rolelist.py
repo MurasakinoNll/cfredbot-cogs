@@ -45,7 +45,11 @@ class RoleListCog(commands.Cog):
         path = os.path.join(os.path.dirname(__file__), "data.json")
         try:
             with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                raw = json.load(f)
+                # Handle both flat {"id": "name"} and new {"id": {"ign": ..., "tag": ...}}
+                return {
+                    k: (v["ign"] if isinstance(v, dict) else v) for k, v in raw.items()
+                }
         except (FileNotFoundError, json.JSONDecodeError):
             return {}
 
