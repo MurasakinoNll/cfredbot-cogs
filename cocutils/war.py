@@ -520,29 +520,43 @@ class WarCog(commands.Cog):
             await asyncio.sleep(120)
 
     async def phasetest(self, ctx: commands.Context):
-        now = datetime.now(UTC).replace(tzinfo=None)
-        fake_war_end = now - timedelta(seconds=30)
-        fake_queue_start = fake_war_end + timedelta(hours=1)
-        fake_next_prep = fake_queue_start + timedelta(hours=1)
+        if not self._war_clocks:
+            await ctx.send("No war clocks loaded.")
+            return
 
-        clock = WarClock(
-            prep_start=now - timedelta(hours=48),
-            war_start=now - timedelta(hours=24),
+        now = datetime.now(UTC).replace(tzinfo=None)
+        clock = next(iter(self._war_clocks.values()))
+
+        time_to_war_end = clock.war_end - now
+
+        fake_war_end = now + timedelta(seconds=30)
+        fake_queue_start = fake_war_end + (clock.queue_start - clock.war_end)
+        fake_next_prep = fake_war_end + (clock.next_prep_start - clock.war_end)
+
+        fake_clock = WarClock(
+            prep_start=fake_war_end - (clock.war_end - clock.prep_start),
+            war_start=fake_war_end - (clock.war_end - clock.war_start),
             war_end=fake_war_end,
             queue_start=fake_queue_start,
             next_prep_start=fake_next_prep,
         )
 
+        await ctx.send(
+            f"  real war ends in `{time_to_war_end}` — testing with preserved offsets\n"
+            f"  fake war end: <t:{int(calendar.timegm(fake_war_end.timetuple()))}:R>\n"
+            f"  fake queue open: <t:{int(calendar.timegm(fake_queue_start.timetuple()))}:R>"
+        )
+
         await ctx.send("testing war end...")
-        await self._on_war_end(clock)
+        await self._on_war_end(fake_clock)
 
         await ctx.send("testing 1h warning...")
-        await self._on_queue_approaching("1h", clock)
+        await self._on_queue_approaching("1h", fake_clock)
 
         await ctx.send("testing 5m warning...")
-        await self._on_queue_approaching("5m", clock)
+        await self._on_queue_approaching("5m", fake_clock)
 
-        await ctx.send("testing queue open...")
-        await self._on_war_queue(clock)
+        await ctx.send("testing war search start...")
+        await self._on_war_queue(fake_clock)
 
         await ctx.send("phasetest complete")
