@@ -1,6 +1,6 @@
 import asyncio
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from urllib.parse import quote
 
 import aiohttp
@@ -93,7 +93,7 @@ class WarClock:
         return "ended"
 
     def next_queue_str(self) -> str:
-        unix = calendar.timegm(self.queue_start.timetuple())
+        unix = int(self.queue_start.replace(tzinfo=timezone.utc).timestamp())
         return f"<t:{unix}:R> (<t:{unix}:f>)"
 
 
@@ -282,7 +282,7 @@ class WarCog(commands.Cog):
     def fmt_discord_time(self, t: str, style: str) -> str:
         try:
             dt = datetime.strptime(t, "%Y%m%dT%H%M%S.%fZ")
-            unix = calendar.timegm(dt.timetuple())
+            unix = int(dt.replace(tzinfo=timezone.utc).timestamp())
             return f"<t:{unix}:{style}>"
         except ValueError:
             return t
