@@ -5,6 +5,7 @@ from urllib.parse import quote
 
 import aiohttp
 import discord
+import calendar
 from redbot.core import commands
 
 from .constants import (
@@ -92,7 +93,7 @@ class WarClock:
         return "ended"
 
     def next_queue_str(self) -> str:
-        unix = int(self.queue_start.timestamp())
+        unix = calendar.timegm(self.queue_start.timetuple())
         return f"<t:{unix}:R> (<t:{unix}:f>)"
 
 
@@ -281,7 +282,7 @@ class WarCog(commands.Cog):
     def fmt_discord_time(self, t: str, style: str) -> str:
         try:
             dt = datetime.strptime(t, "%Y%m%dT%H%M%S.%fZ")
-            unix = int(dt.timestamp())
+            unix = calendar.timegm(dt.timetuple())
             return f"<t:{unix}:{style}>"
         except ValueError:
             return t
@@ -336,7 +337,7 @@ class WarCog(commands.Cog):
 
     async def _tick_clock(self):
         now = datetime.now(UTC).replace(tzinfo=None)
-        for clan_id, clock in self._war_clocks.items():
+        for clan_id, clock in list(self._war_clocks.items()):
             phase = clock.current_phase(now)
             secs_to_queue = (clock.queue_start - now).total_seconds()
 
@@ -346,37 +347,28 @@ class WarCog(commands.Cog):
                 }
                 self._notified.add(f"{clan_id}:reset")
 
-            if (
-                phase in ("cooldown", "war")
-                and secs_to_queue <= 3600
-                and f"{clan_id}:1h" not in self._notified
-            ):
-                self._notified.add(f"{clan_id}:1h")
-                await self._on_queue_approaching("1h", clock)
+            # Approaching warnings — only fire during war or cooldown
+            if phase in ("war", "cooldown"):
+                if secs_to_queue <= 3600 and f"{clan_id}:1h" not in self._notified:
+                    self._notified.add(f"{clan_id}:1h")
+                    await self._on_queue_approaching("1h", clock)
 
-            if (
-                phase in ("cooldown", "war")
-                and secs_to_queue <= 1800
-                and f"{clan_id}:30m" not in self._notified
-            ):
-                self._notified.add(f"{clan_id}:30m")
-                await self._on_queue_approaching("30m", clock)
+                if secs_to_queue <= 1800 and f"{clan_id}:30m" not in self._notified:
+                    self._notified.add(f"{clan_id}:30m")
+                    await self._on_queue_approaching("30m", clock)
 
-            if (
-                phase in ("cooldown", "war")
-                and secs_to_queue <= 300
-                and f"{clan_id}:5m" not in self._notified
-            ):
-                self._notified.add(f"{clan_id}:5m")
-                await self._on_queue_approaching("5m", clock)
+                if secs_to_queue <= 300 and f"{clan_id}:5m" not in self._notified:
+                    self._notified.add(f"{clan_id}:5m")
+                    await self._on_queue_approaching("5m", clock)
+
+            # These fire once when the phase is first detected
+            if phase == "cooldown" and f"{clan_id}:war_end" not in self._notified:
+                self._notified.add(f"{clan_id}:war_end")
+                await self._on_war_end(clock)
 
             if phase == "queue" and f"{clan_id}:war_queue" not in self._notified:
                 self._notified.add(f"{clan_id}:war_queue")
                 await self._on_war_queue(clock)
-
-            if phase == "ended" and f"{clan_id}:war_end" not in self._notified:
-                self._notified.add(f"{clan_id}:war_end")
-                await self._on_war_end(clock)
 
     ###########################################################################
     ### EVENT HOOKS
@@ -526,3 +518,31 @@ class WarCog(commands.Cog):
                 except Exception as e:
                     print(f"[cocutils] war loop error: {e}")
             await asyncio.sleep(120)
+
+    async def phasetest(self, ctx: commands.Context):
+        now = datetime.now(UTC).replace(tzinfo=None)
+        fake_war_end = now - timedelta(seconds=30)
+        fake_queue_start = fake_war_end + timedelta(hours=1)
+        fake_next_prep = fake_queue_start + timedelta(hours=1)
+
+        clock = WarClock(
+            prep_start=now - timedelta(hours=48),
+            war_start=now - timedelta(hours=24),
+            war_end=fake_war_end,
+            queue_start=fake_queue_start,
+            next_prep_start=fake_next_prep,
+        )
+
+        await ctx.send("testing war end...")
+        await self._on_war_end(clock)
+
+        await ctx.send("testing 1h warning...")
+        await self._on_queue_approaching("1h", clock)
+
+        await ctx.send("testing 5m warning...")
+        await self._on_queue_approaching("5m", clock)
+
+        await ctx.send("testing queue open...")
+        await self._on_war_queue(clock)
+
+        await ctx.send("phasetest complete")

@@ -108,3 +108,8 @@ class CocUtils(commands.Cog):
     async def clockresume(self, ctx: commands.Context):
         self.war._paused = False
         await ctx.tick()
+
+    @commands.is_owner()
+    @commands.command()
+    async def phasetest(self, ctx: commands.Context):
+        await self.war.phasetest(ctx)
