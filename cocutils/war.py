@@ -338,6 +338,8 @@ class WarCog(commands.Cog):
     async def _tick_clock(self):
         now = datetime.now(UTC).replace(tzinfo=None)
         for clan_id, clock in list(self._war_clocks.items()):
+            if clan_id != CLAN_ID:
+                continue
             phase = clock.current_phase(now)
             secs_to_queue = (clock.queue_start - now).total_seconds()
 
