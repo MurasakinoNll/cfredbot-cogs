@@ -30,6 +30,7 @@ class TPC(commands.Cog):
             active_grants={},  # {user_id_str: {"expiry": ts, "guild_id": id, "tier": name, "role_id": id}}
             log_channel=None,
         )
+        self.bot.loop.create_task(self._migrate_allowlist())
 
     # ---------------------------------------------------------------
     # admin control + distinguishing real owner from temp
