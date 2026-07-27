@@ -30,13 +30,20 @@ class TPC(commands.Cog):
             active_grants={},  # {user_id_str: {"expiry": ts, "guild_id": id, "tier": name, "role_id": id}}
             log_channel=None,
         )
-        self.bot.loop.create_task(self._migrate_allowlist())
+        self.bot.loop.create_task(self._migrate_data())
 
-    async def _migrate_allowlist(self):
-        current = await self.config.allowlist()
-        if isinstance(current, list):
-            migrated = {str(uid): "moderator" for uid in current}
+    async def _migrate_data(self):
+        current_allowlist = await self.config.allowlist()
+        if isinstance(current_allowlist, list):
+            migrated = {str(uid): "moderator" for uid in current_allowlist}
             await self.config.allowlist.set(migrated)
+
+        current_grants = await self.config.active_grants()
+        cleaned_grants = {
+            uid: data for uid, data in current_grants.items() if isinstance(data, dict)
+        }
+        if len(cleaned_grants) != len(current_grants):
+            await self.config.active_grants.set(cleaned_grants)
 
     # ---------------------------------------------------------------
     # admin control + distinguishing real owner from temp
