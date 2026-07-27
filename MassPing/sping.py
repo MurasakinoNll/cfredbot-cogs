@@ -9,7 +9,7 @@ class SPing(commands.Cog):
     @commands.command(name="sping")
     @commands.is_owner()
     @commands.guild_only()
-    async def sping(self, ctx: commands.Context, *, target: str):
+    async def sping(self, ctx: commands.Context, target: str, delete_after: int = 0):
         member = await self._resolve_member(ctx, target)
         if member is None:
             await ctx.send(f"Couldn't find a member matching `{target}`.")
@@ -26,15 +26,19 @@ class SPing(commands.Cog):
         failed = []
         for channel in channels:
             try:
-                await channel.send(f"{member.mention}")
+                msg = await channel.send(f"{member.mention}")
+                if delete_after > 0:
+                    await msg.delete(delay=delete_after)
                 pinged.append(channel.name)
             except discord.Forbidden:
                 failed.append(channel.name)
 
-        summary = f"Pinged {member.display_name} in {len(pinged)} channel(s): {', '.join(pinged)}"
-        if failed:
-            summary += f"\nFailed in {len(failed)} channel(s) (missing send perms): {', '.join(failed)}"
-        await ctx.send(summary)
+        # summary = f"Pinged {member.display_name} in {len(pinged)} channel(s): {', '.join(pinged)}"
+        # if failed:
+        # summary += f"\nFailed in {len(failed)} channel(s) (missing send perms): {', '.join(failed)}"
+        # if delete_after > 0:
+        # summary += f"\nPing messages will self-delete after {delete_after}s."
+        # await ctx.send(summary)
 
     async def _resolve_member(self, ctx, target: str):
         try:

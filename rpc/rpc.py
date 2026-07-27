@@ -61,7 +61,9 @@ class RPC(commands.Cog):
                 return
             try:
                 await guild.ban(
-                    user, reason=f"RPC ban issued by {ctx.author} ({ctx.author.id})"
+                    user,
+                    reason=f"RPC ban issued by {ctx.author} ({ctx.author.id})",
+                    delete_message_seconds=0,
                 )
             except discord.Forbidden:
                 await ctx.send(f"Forbidden: could not ban {user} in {guild.name}.")
