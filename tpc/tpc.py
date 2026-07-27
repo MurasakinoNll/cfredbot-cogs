@@ -32,6 +32,12 @@ class TPC(commands.Cog):
         )
         self.bot.loop.create_task(self._migrate_allowlist())
 
+    async def _migrate_allowlist(self):
+        current = await self.config.allowlist()
+        if isinstance(current, list):
+            migrated = {str(uid): "moderator" for uid in current}
+            await self.config.allowlist.set(migrated)
+
     # ---------------------------------------------------------------
     # admin control + distinguishing real owner from temp
     # ---------------------------------------------------------------
