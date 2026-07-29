@@ -3,7 +3,6 @@ from redbot.core import commands, Config
 import datetime
 import asyncio
 
-# Static permission tiers — defined once in code, not user-configurable at runtime
 PERMISSION_TIERS = {
     "channel_manager": discord.Permissions(manage_channels=True),
     "moderator": discord.Permissions(
@@ -12,9 +11,10 @@ PERMISSION_TIERS = {
     "admin": discord.Permissions(administrator=True),
 }
 
-SELF_SERVICE_TIERS = {"channel_manager", "moderator"}
+SELF_SERVICE_TIERS = ["channel_manager", "moderator"]
+
 ROLE_NAME_PREFIX = "TPC-"
-CONFIRM_PHRASE = "d063254ed4123704a160bc4a357897be79c9d7873314e23a89c7a7baa64e385"
+CONFIRM_PHRASE = "Y0U$H4LLN0TP4$$"
 
 
 class TPC(commands.Cog):
@@ -45,8 +45,6 @@ class TPC(commands.Cog):
         if len(cleaned_grants) != len(current_grants):
             await self.config.active_grants.set(cleaned_grants)
 
-    # ---------------------------------------------------------------
-    # admin control + distinguishing real owner from temp
     # ---------------------------------------------------------------
 
     @commands.command(name="tpcadd")
@@ -110,30 +108,53 @@ class TPC(commands.Cog):
 
     @commands.command(name="tpcgrant")
     @commands.is_owner()
-    @commands.guild_only()
     async def tpc_grant_manual(
-        self, ctx, user: discord.Member, tier: str = "moderator", minutes: int = 5
+        self,
+        ctx,
+        user: discord.User,
+        tier: str = "moderator",
+        server_id: int = None,
+        minutes: int = 5,
     ):
-        """Manually grant a tier to a user in this guild (owner only, required for admin tier)."""
+        """
+        Manually grant a tier to a user (owner only, required for the admin tier).
+
+        Works in DMs — specify <server_id> to target a specific server.
+        If run inside a server and server_id is omitted, defaults to the current server.
+        """
         if tier not in PERMISSION_TIERS:
             await ctx.send(
                 f"Unknown tier `{tier}`. Options: {', '.join(PERMISSION_TIERS)}"
             )
             return
-        await self._do_grant(ctx, user, tier, minutes)
 
-    # ---------------------------------------------------------------
-    # grant/revoke serv
+        guild, member, error = await self._resolve_guild_and_member(
+            ctx, user.id, server_id
+        )
+        if error:
+            await ctx.send(error)
+            return
+
+        await self._do_grant(ctx, guild, member, tier, minutes)
+
     # ---------------------------------------------------------------
 
     @commands.command(name="tpc")
-    @commands.guild_only()
-    async def tpc(self, ctx, confirm: str = None, minutes: int = 5):
-        """Self-grant your assigned permission tier in this server for N minutes (default 5)."""
-        allowlist = await self.config.allowlist()
-        tier = allowlist.get(str(ctx.author.id))
+    async def tpc(
+        self, ctx, confirm: str = None, server_id: int = None, minutes: int = 5
+    ):
+        """
+        Self-grant your assigned permission tier in a server for N minutes (default 5).
 
-        if tier is None:
+        Works in DMs — specify <server_id> to target a specific server.
+        If run inside a server and server_id is omitted, defaults to the current server.
+        If your assigned tier isn't self-servable (e.g. admin), you'll be granted the
+        highest tier that is self-servable instead.
+        """
+        allowlist = await self.config.allowlist()
+        assigned_tier = allowlist.get(str(ctx.author.id))
+
+        if assigned_tier is None:
             await ctx.send("Unable to process that command.")
             return
 
@@ -141,17 +162,26 @@ class TPC(commands.Cog):
             await ctx.send("Missing or incorrect confirmation string.")
             return
 
-        if tier not in SELF_SERVICE_TIERS:
-            await ctx.send(
-                "Your assigned tier requires the bot owner to grant it manually."
-            )
-            return
-
         if minutes <= 0 or minutes > 30:
             await ctx.send("Minutes must be between 1 and 30.")
             return
 
-        await self._do_grant(ctx, ctx.author, tier, minutes)
+        guild, member, error = await self._resolve_guild_and_member(
+            ctx, ctx.author.id, server_id
+        )
+        if error:
+            await ctx.send(error)
+            return
+
+        grant_tier = (
+            assigned_tier
+            if assigned_tier in SELF_SERVICE_TIERS
+            else SELF_SERVICE_TIERS[-1]
+        )
+
+        await self._do_grant(
+            ctx, guild, member, grant_tier, minutes, assigned_tier=assigned_tier
+        )
 
     @commands.command(name="tpcrevoke")
     @commands.is_owner()
@@ -165,8 +195,31 @@ class TPC(commands.Cog):
         await ctx.send(f"Revoked active grant for {user}.")
 
     # ---------------------------------------------------------------
-    # Internal grant/revoke machinery
-    # ---------------------------------------------------------------
+
+    async def _resolve_guild_and_member(self, ctx, user_id: int, server_id: int = None):
+        """
+        Resolve a target guild + that user's Member object in it.
+        Returns (guild, member, error_message). error_message is None on success.
+        """
+        if server_id is not None:
+            guild = self.bot.get_guild(server_id)
+            if guild is None:
+                return None, None, "Bot is not in a server with that ID."
+        elif ctx.guild is not None:
+            guild = ctx.guild
+        else:
+            return None, None, "Specify a server_id (this command was run in DMs)."
+
+        member = guild.get_member(user_id)
+        if member is None:
+            try:
+                member = await guild.fetch_member(user_id)
+            except discord.NotFound:
+                return None, None, f"That user is not a member of {guild.name}."
+            except discord.HTTPException:
+                return None, None, "Failed to look up membership in that server."
+
+        return guild, member, None
 
     async def _get_or_create_role(
         self, guild: discord.Guild, tier: str
@@ -181,13 +234,21 @@ class TPC(commands.Cog):
             reason="TPC permission tier role (auto-created)",
         )
 
-    async def _do_grant(self, ctx, member: discord.Member, tier: str, minutes: int):
-        role = await self._get_or_create_role(ctx.guild, tier)
+    async def _do_grant(
+        self,
+        ctx,
+        guild: discord.Guild,
+        member: discord.Member,
+        tier: str,
+        minutes: int,
+        assigned_tier: str = None,
+    ):
+        role = await self._get_or_create_role(guild, tier)
         try:
             await member.add_roles(role, reason=f"TPC grant ({tier}), {minutes}m")
         except discord.Forbidden:
             await ctx.send(
-                f"Bot lacks permission to assign the `{role.name}` role here (check role hierarchy)."
+                f"Bot lacks permission to assign the `{role.name}` role in {guild.name} (check role hierarchy)."
             )
             return
 
@@ -195,16 +256,20 @@ class TPC(commands.Cog):
         async with self.config.active_grants() as grants:
             grants[str(member.id)] = {
                 "expiry": expiry.timestamp(),
-                "guild_id": ctx.guild.id,
+                "guild_id": guild.id,
                 "tier": tier,
                 "role_id": role.id,
             }
 
+        downgrade_note = ""
+        if assigned_tier and assigned_tier != tier:
+            downgrade_note = f" (your assigned tier `{assigned_tier}` isn't self-servable, granted `{tier}` instead)"
+
         await ctx.send(
-            f"Granted `{tier}` to {member.mention} in {ctx.guild.name} until {expiry.strftime('%H:%M:%S UTC')}."
+            f"Granted `{tier}` to {member.mention} in {guild.name} until {expiry.strftime('%H:%M:%S UTC')}.{downgrade_note}"
         )
         await self._log(
-            f"GRANT: {member} ({member.id}) tier={tier} guild={ctx.guild.name} ({ctx.guild.id}) by {ctx.author} until {expiry.isoformat()}"
+            f"GRANT: {member} ({member.id}) tier={tier} assigned={assigned_tier or tier} guild={guild.name} ({guild.id}) until {expiry.isoformat()}"
         )
 
         asyncio.create_task(self._auto_revoke(member.id, minutes * 60))
@@ -236,8 +301,9 @@ class TPC(commands.Cog):
             f"REVOKE ({reason}): user_id={user_id} guild={data['guild_id']} tier={data['tier']}"
         )
 
+    # ---------------------------------------------------------------
+
     async def has_temp_owner(self, user_id: int) -> bool:
-        """Kept for backward compat with rpc.py — True if user has any active grant."""
         grants = await self.config.active_grants()
         return str(user_id) in grants
 
