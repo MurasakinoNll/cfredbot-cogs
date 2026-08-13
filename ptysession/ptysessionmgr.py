@@ -9,62 +9,39 @@ import signal
 from redbot.core import commands
 
 TERMINAL_CHANNEL_ID = 1486807756290785400
+USER_TERMINAL_CHANNEL_ID = 1537485660607483945
 
-# ---------------------------------------------------------------------------
-# ANSI processing
-#
-# Discord's ```ansi``` blocks support ONLY:
-#   Formats : 0 (reset), 1 (bold), 4 (underline)
-#   FG color: 30-37
-#   BG color: 40-47
-#
-# Everything else must be stripped or remapped before sending.
-# ---------------------------------------------------------------------------
+NSJAIL_BIN = "/usr/bin/nsjail"
+USER_JAIL_ROOT = "/srv/nsjail_root"
+USER_JAIL_WORKDIR = "/srv/nsjail_home"
+JAIL_RLIMIT_AS_MB = 512
+JAIL_RLIMIT_CPU_SECONDS = 3600
+JAIL_RLIMIT_FSIZE_MB = 64
+JAIL_RLIMIT_NOFILE = 64
+ALLOW_NON_OWNER_IN_USER_TERMINAL = False
 
-# Sequences to discard entirely.
-#
-# Key fix: the final-byte set covers [A-LN-Za-ln-z] — every CSI final byte
-# EXCEPT 'm' (SGR). This correctly catches ?25l (hide cursor), ?2004l
-# (bracketed paste), ?7l (no-wrap), cursor moves, erase, scroll — all of them.
-# The old pattern listed specific letters and was missing 'l', causing private
-# mode sequences like ESC[?25l to survive as literal garbage in output.
 _DISCARD_RE = re.compile(
-    r"\x1b\[[0-9;?]*[A-LN-Za-ln-z]"  # all CSI with final byte != m
-    r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"  # OSC  e.g. ]10;? ]11;?
-    r"|\x1b[()][AB012]"  # charset G0/G1 designation
-    r"|\x1b[=>]"  # application / normal keypad
-    r"|\x1b[MDE78]"  # reverse index, next line, etc.
-    r"|\x9b[^@-~]*[@-~]"  # C1 CSI
-    r"|\r",  # bare CR from PTY line discipline
+    r"\x1b\[[0-9;?]*[A-LN-Za-ln-z]"
+    r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"
+    r"|\x1b[()][AB012]"
+    r"|\x1b[=>]"
+    r"|\x1b[MDE78]"
+    r"|\x9b[^@-~]*[@-~]"
+    r"|\r",
     re.ASCII,
 )
 
 _SUPPORTED_FMT = {0, 1, 4}
 _SUPPORTED_FG = set(range(30, 38))
 _SUPPORTED_BG = set(range(40, 48))
-
-# Matches any SGR sequence: ESC [ <codes> m
 _SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
-
-# Two adjacent SGR sequences that can be merged into one.
-# ESC[0mESC[1m  →  ESC[0;1m  — reduces noise from apps that emit one code at a time.
 _ADJ_SGR_RE = re.compile(r"(\x1b\[[0-9;]*m)(\x1b\[[0-9;]*m)")
 
 
 def _remap_sgr(match: re.Match) -> str:
-    """
-    Remap an SGR sequence to only Discord-supported codes.
-    - High-intensity fg 90-97  → standard fg 30-37
-    - High-intensity bg 100-107 → standard bg 40-47
-    - Unsupported format codes  → reset (0)
-    - 256-color / RGB           → dropped
-    Returns '' if the result is empty.
-    """
     inner = match.group(1)
     raw_codes = inner.split(";") if inner else ["0"]
-
     out = []
-    skip = 0
     codes = list(raw_codes)
     i = 0
     while i < len(codes):
@@ -74,60 +51,40 @@ def _remap_sgr(match: re.Match) -> str:
             n = int(part)
         except ValueError:
             continue
-
-        # 256-color / RGB: ESC[38;5;Nm, ESC[38;2;R;G;Bm, same for 48
         if n in (38, 48):
             if i < len(codes):
                 mode = codes[i]
                 i += 1
                 if mode == "5" and i < len(codes):
-                    i += 1  # skip palette index
+                    i += 1
                 elif mode == "2" and i + 2 < len(codes):
-                    i += 3  # skip R G B
-            out.append("0")  # replace with reset
+                    i += 3
+            out.append("0")
             continue
-
         if n in _SUPPORTED_FMT or n in _SUPPORTED_FG or n in _SUPPORTED_BG:
             out.append(str(n))
         elif 90 <= n <= 97:
-            out.append(str(n - 60))  # bright fg → normal fg
+            out.append(str(n - 60))
         elif 100 <= n <= 107:
-            out.append(str(n - 60))  # bright bg → normal bg
+            out.append(str(n - 60))
         else:
-            out.append("0")  # anything else → reset
-
+            out.append("0")
     if not out:
         return ""
-
-    # Collapse consecutive resets into one
     deduped: list[str] = []
     for c in out:
         if c != "0" or not deduped or deduped[-1] != "0":
             deduped.append(c)
-
     return f"\x1b[{';'.join(deduped)}m"
 
 
 def _consolidate_sgr(text: str) -> str:
-    """
-    Merge adjacent SGR sequences, respecting reset semantics.
-
-    - ESC[37mESC[0;1m  -> ESC[0;1m   (37 is wiped by the following reset, drop it)
-    - ESC[0mESC[1m     -> ESC[0;1m   (safe merge)
-    - ESC[31mESC[1m    -> ESC[31;1m  (safe merge, no reset)
-
-    Repeats until stable to handle runs of 3+.
-    """
-
     def merge(m: re.Match) -> str:
         a_inner = m.group(1)[2:-1]
         b_inner = m.group(2)[2:-1]
         b_codes = b_inner.split(";") if b_inner else ["0"]
-        # If the second sequence starts with a reset, the first is fully
-        # overridden — discard it and keep only the second.
         if b_codes[0] in ("", "0"):
             return m.group(2)
-        # Deduplicate codes while preserving order (last reset already handled above)
         seen = set()
         merged = []
         for c in filter(None, (a_inner + ";" + b_inner).split(";")):
@@ -144,16 +101,9 @@ def _consolidate_sgr(text: str) -> str:
 
 
 def normalize_ansi(raw: str) -> str:
-    """
-    1. Strip all non-SGR escape sequences (cursor moves, OSC, private modes, etc.)
-    2. Remap SGR codes to the Discord-supported subset.
-    3. Merge adjacent SGR sequences to reduce noise.
-    4. Kill any leftover bare ESC bytes.
-    """
     text = _DISCARD_RE.sub("", raw)
     text = _SGR_RE.sub(_remap_sgr, text)
     text = _consolidate_sgr(text)
-    # Only strip truly orphaned ESC bytes (not followed by '['), not valid sequences
     text = re.sub(r"\x1b(?!\[)", "", text)
     return text
 
@@ -163,111 +113,142 @@ def chunk_text(text: str, size: int = 1900):
         yield text[i : i + size]
 
 
-# ---------------------------------------------------------------------------
-# Cog
-# ---------------------------------------------------------------------------
+def _build_command(jailed: bool) -> list[str]:
+    if not jailed:
+        return ["/bin/bash", "--norc", "--noprofile"]
+    return [
+        NSJAIL_BIN,
+        "--mode",
+        "o",
+        "--user",
+        "99999",
+        "--group",
+        "99999",
+        "--hostname",
+        "sandbox",
+        "--cwd",
+        "/root",
+        "--chroot",
+        USER_JAIL_ROOT,
+        "--bindmount_ro",
+        "/bin",
+        "--bindmount_ro",
+        "/usr",
+        "--bindmount_ro",
+        "/lib",
+        "--bindmount_ro",
+        "/lib64",
+        "--bindmount_ro",
+        "/etc/resolv.conf",
+        "--bindmount",
+        f"{USER_JAIL_WORKDIR}:/root",
+        "--rlimit_as",
+        str(JAIL_RLIMIT_AS_MB),
+        "--rlimit_cpu",
+        str(JAIL_RLIMIT_CPU_SECONDS),
+        "--rlimit_fsize",
+        str(JAIL_RLIMIT_FSIZE_MB),
+        "--rlimit_nofile",
+        str(JAIL_RLIMIT_NOFILE),
+        "--time_limit",
+        "0",
+        "--env",
+        "TERM=xterm-256color",
+        "--env",
+        "PS1=$ ",
+        "--env",
+        "HOME=/root",
+        "--",
+        "/bin/bash",
+        "--norc",
+        "--noprofile",
+    ]
+
+
+class _Session:
+    __slots__ = ("proc", "master_fd", "running", "thread", "jailed")
+
+    def __init__(self):
+        self.proc: subprocess.Popen | None = None
+        self.master_fd: int | None = None
+        self.running = False
+        self.thread: threading.Thread | None = None
+        self.jailed = False
 
 
 class ExecPty(commands.Cog):
     """
-    Persistent PTY terminal session bridged to a Discord channel.
-    All messages sent in the terminal channel are forwarded directly to bash.
+    Persistent PTY terminal session(s) bridged to Discord channels.
+    TERMINAL_CHANNEL_ID runs unrestricted. USER_TERMINAL_CHANNEL_ID runs under nsjail.
     """
 
     def __init__(self, bot):
         self.bot = bot
-        self._proc: subprocess.Popen | None = None
-        self._master_fd: int | None = None
-        self._reader_thread: threading.Thread | None = None
-        self._running = False
+        self._sessions: dict[int, _Session] = {}
 
-    # ------------------------------------------------------------------ #
-    #  Internal helpers                                                    #
-    # ------------------------------------------------------------------ #
+    def _is_jailed_channel(self, channel_id: int) -> bool:
+        return channel_id == USER_TERMINAL_CHANNEL_ID
 
-    def _kill_session(self):
-        self._running = False
+    def _valid_channel(self, channel_id: int) -> bool:
+        return channel_id in (TERMINAL_CHANNEL_ID, USER_TERMINAL_CHANNEL_ID)
 
-        if self._proc and self._proc.poll() is None:
+    def _kill_session(self, channel_id: int):
+        session = self._sessions.get(channel_id)
+        if not session:
+            return
+        session.running = False
+        if session.proc and session.proc.poll() is None:
             try:
-                os.killpg(os.getpgid(self._proc.pid), signal.SIGKILL)
+                os.killpg(os.getpgid(session.proc.pid), signal.SIGKILL)
             except (ProcessLookupError, PermissionError):
                 pass
-            self._proc = None
-
-        if self._master_fd is not None:
+            session.proc = None
+        if session.master_fd is not None:
             try:
-                os.close(self._master_fd)
+                os.close(session.master_fd)
             except OSError:
                 pass
-            self._master_fd = None
+            session.master_fd = None
 
-    def _start_session(self):
-        """Spawn a persistent bash shell inside a PTY."""
+    def _start_session(self, channel_id: int):
+        jailed = self._is_jailed_channel(channel_id)
         master_fd, slave_fd = pty.openpty()
-
         proc = subprocess.Popen(
-            ["/bin/bash", "--norc", "--noprofile"],
+            _build_command(jailed),
             stdin=slave_fd,
             stdout=slave_fd,
             stderr=slave_fd,
             close_fds=True,
             preexec_fn=os.setsid,
-            env={
-                **os.environ,
-                "TERM": "xterm-256color",
-                "PS1": "$ ",
-            },
+            env={**os.environ, "TERM": "xterm-256color", "PS1": "$ "},
         )
-
         os.close(slave_fd)
+        session = _Session()
+        session.proc = proc
+        session.master_fd = master_fd
+        session.running = True
+        session.jailed = jailed
+        self._sessions[channel_id] = session
+        return master_fd, proc, session
 
-        self._proc = proc
-        self._master_fd = master_fd
-        self._running = True
-
-        return master_fd, proc
-
-    def _send_to_pty(self, text: str):
-        """
-        Write input to the PTY using \\r as the line terminator.
-
-        Real terminals send \\r (carriage return) when Enter is pressed, not \\n.
-        Curses programs (vim, nano, htop, etc.) rely on this — sending \\n will
-        cause the keypress to be ignored or misinterpreted.
-        """
-        if self._master_fd is None:
-            raise RuntimeError("No active PTY session.")
+    def _send_to_pty(self, channel_id: int, text: str):
+        session = self._sessions.get(channel_id)
+        if not session or session.master_fd is None:
+            raise RuntimeError("No active PTY session for this channel.")
         data = text.replace("\n", "\r")
         if not data.endswith("\r"):
             data += "\r"
-        os.write(self._master_fd, data.encode())
-
-    # ------------------------------------------------------------------ #
-    #  Background reader                                                   #
-    # ------------------------------------------------------------------ #
+        os.write(session.master_fd, data.encode())
 
     def _reader_loop(
         self, master_fd: int, loop: asyncio.AbstractEventLoop, channel_id: int
     ):
-        """
-        Read PTY output in a background thread and forward to Discord.
-
-        Lines are batched together and flushed as a single ```ansi``` block
-        so that ANSI color state flows correctly across lines — a color set on
-        line 1 remains active on line 2 because they share the same code block.
-
-        Flush triggers:
-          - Accumulated text would exceed Discord's 1900-char safe limit
-          - No new data arrives within FLUSH_TIMEOUT seconds (output gone quiet)
-        """
         import select
 
-        FLUSH_TIMEOUT = 0.35  # seconds of silence before flushing
-        MAX_BLOCK = 1900  # safe chars per ```ansi``` block
-
-        raw_buf = b""  # unprocessed bytes from the PTY
-        text_buf = ""  # normalized text waiting to be sent
+        FLUSH_TIMEOUT = 0.35
+        MAX_BLOCK = 1900
+        raw_buf = b""
+        text_buf = ""
 
         def flush():
             nonlocal text_buf
@@ -282,7 +263,6 @@ class ExecPty(commands.Cog):
                         self._send_output(channel_id, block.strip()), loop
                     )
                     break
-                # Split cleanly on the last newline before the limit
                 split_at = block.rfind("\n", 0, MAX_BLOCK)
                 if split_at == -1:
                     split_at = MAX_BLOCK
@@ -291,54 +271,45 @@ class ExecPty(commands.Cog):
                     self._send_output(channel_id, part.strip()), loop
                 )
 
-        while self._running:
-            # Wait up to FLUSH_TIMEOUT for data; silence means flush
+        session = self._sessions.get(channel_id)
+
+        while session and session.running:
             ready, _, _ = select.select([master_fd], [], [], FLUSH_TIMEOUT)
             if not ready:
-                # On silence: drain raw_buf first — curses apps like vi
-                # never write \n so their output sits in raw_buf forever
-                # and would never make it into text_buf without this.
                 if raw_buf:
                     text_buf += normalize_ansi(raw_buf.decode(errors="replace"))
                     raw_buf = b""
                 flush()
                 continue
-
             try:
                 chunk = os.read(master_fd, 4096)
             except OSError:
                 break
-
             if not chunk:
                 break
-
             raw_buf += chunk
-
-            # Drain all complete lines into text_buf
             while b"\n" in raw_buf:
                 line_bytes, raw_buf = raw_buf.split(b"\n", 1)
                 line = line_bytes.decode(errors="replace") + "\n"
                 text_buf += normalize_ansi(line)
-
-                # Pre-emptively flush if we're already near the limit
                 if len(text_buf) >= MAX_BLOCK:
                     if raw_buf:
                         text_buf += normalize_ansi(raw_buf.decode(errors="replace"))
                         raw_buf = b""
                     flush()
 
-        # Drain remaining bytes then final flush
         if raw_buf:
             text_buf += normalize_ansi(raw_buf.decode(errors="replace"))
         flush()
 
-        if self._running:
+        if session and session.running:
             asyncio.run_coroutine_threadsafe(
-                self._send_output(channel_id, "⚠️ PTY process exited."), loop
+                self._send_output(channel_id, "PTY process exited."), loop
             )
-        self._running = False
-        self._proc = None
-        self._master_fd = None
+        if session:
+            session.running = False
+            session.proc = None
+            session.master_fd = None
 
     async def _send_output(self, channel_id: int, text: str):
         channel = self.bot.get_channel(channel_id)
@@ -348,95 +319,99 @@ class ExecPty(commands.Cog):
             except Exception:
                 pass
 
-    # ------------------------------------------------------------------ #
-    #  Commands                                                            #
-    # ------------------------------------------------------------------ #
-
     @commands.is_owner()
     @commands.command()
     async def ptystart(self, ctx):
-        """Start the persistent PTY bash session in the terminal channel."""
-        if self._running:
-            await ctx.send("A PTY session is already running.")
-            return
-
-        channel = self.bot.get_channel(TERMINAL_CHANNEL_ID)
-        if channel is None:
+        """Start a PTY session bound to the channel this command is run in."""
+        channel_id = ctx.channel.id
+        if not self._valid_channel(channel_id):
             await ctx.send(
-                f"Cannot find channel `{TERMINAL_CHANNEL_ID}`. Check the ID."
+                "Run this in the terminal channel or the user terminal channel."
             )
             return
 
+        existing = self._sessions.get(channel_id)
+        if existing and existing.running:
+            await ctx.send("A PTY session is already running in this channel.")
+            return
+
         try:
-            master_fd, proc = self._start_session()
+            master_fd, proc, session = self._start_session(channel_id)
         except Exception as e:
             await ctx.send(f"Failed to start PTY: {type(e).__name__}: {e}")
             return
 
         loop = asyncio.get_event_loop()
-        self._reader_thread = threading.Thread(
+        session.thread = threading.Thread(
             target=self._reader_loop,
-            args=(master_fd, loop, TERMINAL_CHANNEL_ID),
+            args=(master_fd, loop, channel_id),
             daemon=True,
         )
-        self._reader_thread.start()
+        session.thread.start()
 
+        mode = "jailed (nsjail)" if session.jailed else "unrestricted"
         await ctx.send(
-            f"PTY session started (PID `{proc.pid}`). "
-            f"Terminal channel: <#{TERMINAL_CHANNEL_ID}>. "
+            f"PTY session started (PID `{proc.pid}`, {mode}) in <#{channel_id}>."
         )
 
     @commands.is_owner()
     @commands.command()
     async def ptystop(self, ctx):
-        """Kill the PTY session."""
-        if not self._running:
-            await ctx.send("No active PTY session.")
+        """Kill the PTY session bound to this channel."""
+        channel_id = ctx.channel.id
+        session = self._sessions.get(channel_id)
+        if not session or not session.running:
+            await ctx.send("No active PTY session in this channel.")
             return
-
-        self._kill_session()
+        self._kill_session(channel_id)
         await ctx.send("PTY session terminated.")
 
-    @commands.is_owner()
     @commands.command()
     async def pty(self, ctx, *, cmd: str):
-        """Send input directly to the PTY session (works from any channel)."""
-        if not self._running:
+        """Send input to the PTY session bound to this channel."""
+        channel_id = ctx.channel.id
+        if not self._valid_channel(channel_id):
+            return
+        if channel_id == TERMINAL_CHANNEL_ID or not ALLOW_NON_OWNER_IN_USER_TERMINAL:
+            if not await self.bot.is_owner(ctx.author):
+                return
+
+        session = self._sessions.get(channel_id)
+        if not session or not session.running:
             await ctx.send("No active PTY session. Use `!ptystart` first.")
             return
-
         try:
-            self._send_to_pty(cmd)
+            self._send_to_pty(channel_id, cmd)
         except Exception as e:
             await ctx.send(f"Failed to write to PTY: {e}")
 
-    @commands.is_owner()
     @commands.command()
     async def ptykey(self, ctx, *, key: str):
         """
-        Send a special key or control sequence to the PTY.
+        Send a special key or control sequence to the PTY bound to this channel.
 
         Named keys (case-insensitive):
-          return / enter    Carriage return (\r)
-          tab               Horizontal tab (\t)
-          escape / esc      Escape key (\x1b)
-          backspace / bs    Backspace (\x7f)
-          delete / del      Delete (\x1b[3~)
-          up                Arrow up (\x1b[A)
-          down              Arrow down (\x1b[B)
-          right             Arrow right (\x1b[C)
-          left              Arrow left (\x1b[D)
-          home              Home (\x1b[H)
-          end               End (\x1b[F)
-          pageup / pgup     Page up (\x1b[5~)
-          pagedown / pgdn   Page down (\x1b[6~)
-          f1 .. f12         Function keys
+          return / enter    Carriage return (\\r)
+          tab               Horizontal tab (\\t)
+          escape / esc      Escape key (\\x1b)
+          backspace / bs    Backspace (\\x7f)
+          delete / del      Delete (\\x1b[3~)
+          up / down / right / left   Arrow keys
+          home / end
+          pageup / pgup / pagedown / pgdn
+          f1 .. f12
 
-        Control characters: ctrl+a .. ctrl+z  (e.g. ctrl+c, ctrl+d, ctrl+z)
-
-        You can also chain keys with spaces: !ptykey escape escape return
-        Or send a raw hex byte: !ptykey hex:1b
+        Control characters: ctrl+a .. ctrl+z
+        Chain with spaces: !ptykey escape escape return
+        Raw byte: !ptykey hex:1b
         """
+        channel_id = ctx.channel.id
+        if not self._valid_channel(channel_id):
+            return
+        if channel_id == TERMINAL_CHANNEL_ID or not ALLOW_NON_OWNER_IN_USER_TERMINAL:
+            if not await self.bot.is_owner(ctx.author):
+                return
+
         _NAMED = {
             "return": b"\r",
             "enter": b"\r",
@@ -471,20 +446,18 @@ class ExecPty(commands.Cog):
             "f12": b"\x1b[24~",
         }
 
-        if not self._running:
+        session = self._sessions.get(channel_id)
+        if not session or not session.running:
             await ctx.send("No active PTY session. Use `!ptystart` first.")
             return
-
-        if self._master_fd is None:
+        if session.master_fd is None:
             await ctx.send("No active PTY fd.")
             return
 
         payload = b""
         tokens = key.lower().split()
         unknown = []
-
         for token in tokens:
-            # Raw hex: hex:1b  or  hex:0d
             if token.startswith("hex:"):
                 try:
                     payload += bytes.fromhex(token[4:])
@@ -492,18 +465,14 @@ class ExecPty(commands.Cog):
                 except ValueError:
                     unknown.append(token)
                     continue
-
-            # ctrl+x  →  control character 0x01-0x1a
             if token.startswith("ctrl+") and len(token) == 6:
                 ch = token[5]
                 if "a" <= ch <= "z":
                     payload += bytes([ord(ch) - ord("a") + 1])
                     continue
-
             if token in _NAMED:
                 payload += _NAMED[token]
                 continue
-
             unknown.append(token)
 
         if unknown:
@@ -512,107 +481,93 @@ class ExecPty(commands.Cog):
                 f"See `!help ptykey` for the full list."
             )
             return
-
         if not payload:
             await ctx.send("No keys to send.")
             return
-
         try:
-            os.write(self._master_fd, payload)
+            os.write(session.master_fd, payload)
         except Exception as e:
             await ctx.send(f"PTY write error: {e}")
 
     @commands.is_owner()
     @commands.command()
     async def ptyrefresh(self, ctx):
-        """
-        Force the active PTY program to redraw its screen.
-
-        Sends SIGWINCH (window resize) to the foreground process group, which
-        causes curses programs (vi, nano, htop, etc.) to fully repaint their
-        screen. Use this after launching an interactive program that appears
-        blank, or any time the display looks stale.
-        """
-        if not self._running or self._proc is None:
-            await ctx.send("No active PTY session.")
+        """Force the PTY program bound to this channel to redraw its screen."""
+        channel_id = ctx.channel.id
+        session = self._sessions.get(channel_id)
+        if not session or not session.running or session.proc is None:
+            await ctx.send("No active PTY session in this channel.")
             return
-
-        if self._master_fd is None:
+        if session.master_fd is None:
             await ctx.send("No active PTY fd.")
             return
-
         try:
             import fcntl
             import termios
             import struct
 
-            # Set the PTY window size to something large so programs render
-            # a full screen worth of content rather than a tiny 80x24 box.
-            # Cols x rows — 220 cols, 50 rows is a reasonable Discord-friendly size.
             COLS, ROWS = 220, 50
             winsize = struct.pack("HHHH", ROWS, COLS, 0, 0)
-            fcntl.ioctl(self._master_fd, termios.TIOCSWINSZ, winsize)
-
-            # SIGWINCH tells the foreground process group the terminal resized.
-            # The process redraws its entire screen in response.
-            os.killpg(os.getpgid(self._proc.pid), signal.SIGWINCH)
-            await ctx.send("↺ Sent SIGWINCH — screen should redraw momentarily.")
+            fcntl.ioctl(session.master_fd, termios.TIOCSWINSZ, winsize)
+            os.killpg(os.getpgid(session.proc.pid), signal.SIGWINCH)
+            await ctx.send("Sent SIGWINCH, screen should redraw momentarily.")
         except Exception as e:
             await ctx.send(f"Refresh failed: {type(e).__name__}: {e}")
 
     @commands.is_owner()
     @commands.command()
     async def ptystatus(self, ctx):
-        """Show PTY session status."""
-        if not self._running or self._proc is None:
-            await ctx.send("No active PTY session.")
+        """Show PTY session status for every tracked channel."""
+        if not self._sessions:
+            await ctx.send("No active PTY sessions.")
             return
-
-        pid = self._proc.pid
-        rc = self._proc.poll()
-        if rc is None:
-            await ctx.send(
-                f"PTY session running — PID `{pid}`, master fd `{self._master_fd}`."
-            )
-        else:
-            await ctx.send(f"PTY process exited with code `{rc}`.")
-
-    # ------------------------------------------------------------------ #
-    #  Passthrough listener — terminal channel acts as a raw terminal     #
-    # ------------------------------------------------------------------ #
+        lines = []
+        for channel_id, session in self._sessions.items():
+            if not session.running or session.proc is None:
+                lines.append(f"<#{channel_id}>: no active session")
+                continue
+            rc = session.proc.poll()
+            mode = "jailed" if session.jailed else "unrestricted"
+            if rc is None:
+                lines.append(
+                    f"<#{channel_id}>: running, PID `{session.proc.pid}`, {mode}"
+                )
+            else:
+                lines.append(f"<#{channel_id}>: exited, code `{rc}`")
+        await ctx.send("\n".join(lines))
 
     @commands.Cog.listener()
     async def on_message(self, message):
         """
-        Any message sent in the terminal channel by the bot owner is
-        forwarded to the PTY as-is (no command prefix needed).
-        Only messages that invoke an actual registered bot command are skipped
-        to avoid double-sending.
+        Forward messages sent in either terminal channel directly to that
+        channel's PTY, skipping ones that resolve to a registered bot command.
         """
-        if message.channel.id != TERMINAL_CHANNEL_ID:
+        channel_id = message.channel.id
+        if not self._valid_channel(channel_id):
             return
         if message.author.bot:
             return
 
-        if not await self.bot.is_owner(message.author):
-            return
+        if channel_id == TERMINAL_CHANNEL_ID or not ALLOW_NON_OWNER_IN_USER_TERMINAL:
+            if not await self.bot.is_owner(message.author):
+                return
 
         content = message.content.strip()
         if not content:
             return
 
-        # Skip real registered bot commands to avoid double-sending
         ctx = await self.bot.get_context(message)
         if ctx.valid and ctx.command is not None:
             return
 
-        if not self._running:
+        session = self._sessions.get(channel_id)
+        if not session or not session.running:
             await message.channel.send(
-                "⚠️ No active PTY session. Use `!ptystart` to begin.", delete_after=5
+                "No active PTY session. Use `!ptystart` to begin.", delete_after=5
             )
             return
 
         try:
-            self._send_to_pty(content)
+            self._send_to_pty(channel_id, content)
         except Exception as e:
             await message.channel.send(f"PTY write error: {e}")
