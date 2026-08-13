@@ -137,8 +137,6 @@ def _build_command(jailed: bool) -> list[str]:
         "--bindmount_ro",
         "/lib",
         "--bindmount_ro",
-        "/lib64",
-        "--bindmount_ro",
         "/etc/resolv.conf",
         "--bindmount",
         f"{USER_JAIL_WORKDIR}:/root",
