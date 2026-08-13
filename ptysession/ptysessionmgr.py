@@ -317,7 +317,6 @@ class ExecPty(commands.Cog):
             except Exception:
                 pass
 
-    @commands.is_owner()
     @commands.command()
     async def ptystart(self, ctx):
         """Start a PTY session bound to the channel this command is run in."""
